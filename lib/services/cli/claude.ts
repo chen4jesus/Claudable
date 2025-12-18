@@ -729,75 +729,35 @@ export async function executeClaude(
 
     Object.assign(process.env, allowRootEnv);
 
-    // Resolve path to Claude Code executable
-    // 1. Try resolving from local node_modules
-    // 2. Fallback to assuming 'claude' is in PATH
-    let claudePath: string | undefined;
-    try {
-        // Try to find the binary within the installed @anthropic-ai/claude-code package or bin
-        // Since we are in production, paths might vary. 
-        // We'll rely on the SDK's default resolution usually, but if it fails, we need to be explicit.
-        
-        // Use Node's resolution to find the package root or bin
-        const binPath = path.resolve(process.cwd(), 'node_modules', '.bin', 'claude');
-        const binExists = await fs.access(binPath).then(() => true).catch(() => false);
-        
-        if (binExists) {
-            claudePath = binPath;
-            console.log(`[ClaudeService] Found local Claude binary: ${claudePath}`);
-        } else {
-             // Check if it's globally available
-             // This is harder to check seamlessly in Node without spawning 'which', 
-             // but 'claude' string usually works if in PATH. 
-             // However, the SDK error asks for 'pathToClaudeCodeExecutable'.
-             // If local bin is missing, we might assume it's installed globally or use npx wrapper logic if needed.
-             // For now, let's try to infer if we are in a monorepo or different structure.
-             console.warn('[ClaudeService] Local Claude binary not found in node_modules/.bin/claude. Relying on PATH or SDK default.');
-        }
-    } catch (e) {
-        console.warn('[ClaudeService] Error resolving Claude path:', e);
-    }
-
     // Start Claude Agent SDK query
     console.log(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
     console.log(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
     
-    const queryOptions: any = {
-        cwd: absoluteProjectPath,
+    const response = query({
+      prompt: instruction,
+      options: {
+        cwd: absoluteProjectPath, // Work only in project folder (protects Claudable root)
         additionalDirectories: [absoluteProjectPath],
         model: resolvedModel,
-        resume: sessionId,
-        permissionMode: 'bypassPermissions',
+        resume: sessionId, // Resume previous session
+        permissionMode: 'bypassPermissions', // Auto-approve commands and edits
         systemPrompt: getSystemPromptForProjectType(projectType),
         maxOutputTokens,
+        // Capture SDK stderr so we can surface real errors instead of just exit code
         stderr: (data: string) => {
           const line = String(data).trimEnd();
           if (!line) return;
+          // Keep only the last ~200 lines to avoid memory bloat
           if (stderrBuffer.length > 200) stderrBuffer.shift();
           stderrBuffer.push(line);
+          // Also mirror to server logs for live debugging
           console.error(`[ClaudeSDK][stderr] ${line}`);
         },
         env: {
           ...process.env,
           ...allowRootEnv,
         },
-    };
-
-    // If we successfully found a specific path, pass it. 
-    // Otherwise, we omit it and let the SDK try its default lookup.
-    if (claudePath) {
-        queryOptions.pathToClaudeCodeExecutable = claudePath;
-    } else {
-        // Fallback: If not found locally, maybe it is a peer dependency or installed differently. 
-        // We can explicitly point to a known location if provided via env.
-        if (process.env.CLAUDE_CODE_EXEC_PATH) {
-             queryOptions.pathToClaudeCodeExecutable = process.env.CLAUDE_CODE_EXEC_PATH;
-        }
-    }
-
-    const response = query({
-      prompt: instruction,
-      options: queryOptions,
+      } as any,
     });
 
     let currentSessionId: string | undefined = sessionId;
