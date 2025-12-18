@@ -245,7 +245,7 @@ export async function pushProjectToGitHub(projectId: string) {
     addOrUpdateRemote(repoPath, 'origin', authenticatedUrl);
     const committed = commitAll(repoPath, 'Update from Claudable');
     if (!committed) {
-      console.log('[GitHubService] No changes to commit before push');
+      console.debug('[GitHubService] No changes to commit before push');
     }
 
     pushToRemote(repoPath, 'origin', data.default_branch || 'main');

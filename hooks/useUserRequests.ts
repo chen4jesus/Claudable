@@ -70,7 +70,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
       });
       if (response.status === 404) {
         if (previousActiveState.current) {
-          console.log('🔄 [UserRequests] Active requests endpoint unavailable; assuming no active requests.');
+          console.debug('🔄 [UserRequests] Active requests endpoint unavailable; assuming no active requests.');
         }
         if (activeRequestIdsRef.current.size > 0) {
           activeRequestIdsRef.current.clear();
@@ -91,7 +91,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
 
         // Log only when active state changes
         if (data.hasActiveRequests !== previousActiveState.current) {
-          console.log(`🔄 [UserRequests] Active requests: ${data.hasActiveRequests} (count: ${data.activeCount})`);
+          console.debug(`🔄 [UserRequests] Active requests: ${data.hasActiveRequests} (count: ${data.activeCount})`);
           previousActiveState.current = data.hasActiveRequests;
         }
       } else {
@@ -139,7 +139,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     intervalRef.current = setInterval(() => checkActiveRequests(), pollInterval);
 
     if (process.env.NODE_ENV === 'development') {
-      console.log(`⏱️ [UserRequests] Polling interval: ${pollInterval}ms (active: ${hasActiveRequests})`);
+      console.debug(`⏱️ [UserRequests] Polling interval: ${pollInterval}ms (active: ${hasActiveRequests})`);
     }
 
     return () => {
@@ -169,14 +169,14 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     registerActiveRequest(requestId);
     // Check status immediately via polling
     checkActiveRequests({ force: true });
-    console.log(`🔄 [UserRequests] Created request: ${requestId}`);
+    console.debug(`🔄 [UserRequests] Created request: ${requestId}`);
   }, [checkActiveRequests, registerActiveRequest]);
 
   const startRequest = useCallback((requestId: string) => {
     registerActiveRequest(requestId);
     // Check status immediately via polling
     checkActiveRequests({ force: true });
-    console.log(`▶️ [UserRequests] Started request: ${requestId}`);
+    console.debug(`▶️ [UserRequests] Started request: ${requestId}`);
   }, [checkActiveRequests, registerActiveRequest]);
 
   const completeRequest = useCallback((
@@ -187,7 +187,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     unregisterActiveRequest(requestId);
     // Check status immediately via polling with slight delay
     setTimeout(() => checkActiveRequests({ force: true }), 100);
-    console.log(`✅ [UserRequests] Completed request: ${requestId} (${isSuccessful ? 'success' : 'failed'})`);
+    console.debug(`✅ [UserRequests] Completed request: ${requestId} (${isSuccessful ? 'success' : 'failed'})`);
   }, [checkActiveRequests, unregisterActiveRequest]);
 
   return {

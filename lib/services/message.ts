@@ -60,7 +60,7 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
       : '';
   let lastError: Error | null = null;
 
-  console.log('[MessageService] Creating message with metadata:', {
+  console.debug('[MessageService] Creating message with metadata:', {
     messageId: input.id,
     projectId: input.projectId,
     role: input.role,
@@ -88,8 +88,8 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
         },
       });
 
-      console.log(`[MessageService] Created message: ${message.id} (${input.role})${input.requestId ? ` [requestId: ${input.requestId}]` : ''} on attempt ${attempt}`);
-      console.log('[MessageService] Stored metadataJson length:', metadataLength);
+      console.debug(`[MessageService] Created message: ${message.id} (${input.role})${input.requestId ? ` [requestId: ${input.requestId}]` : ''} on attempt ${attempt}`);
+      console.debug('[MessageService] Stored metadataJson length:', metadataLength);
 
       const mappedMessage = mapPrismaMessage(message);
       const mappedMetadataLength = mappedMessage.metadataJson ? mappedMessage.metadataJson.length : 0;
@@ -97,7 +97,7 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
         mappedMessage.metadataJson && mappedMetadataLength > 0
           ? `${mappedMessage.metadataJson.substring(0, 200)}${mappedMetadataLength > 200 ? '...' : ''}`
           : '';
-      console.log('[MessageService] Mapped message metadata:', {
+      console.debug('[MessageService] Mapped message metadata:', {
         hasMetadataJson: mappedMetadataLength > 0,
         metadataJsonLength: mappedMetadataLength,
         metadataJsonPreview: mappedMetadataPreview,
@@ -111,7 +111,7 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
       if (attempt < 3) {
         // Exponential backoff: 200ms, 400ms
         const delayMs = Math.pow(2, attempt) * 100;
-        console.log(`[MessageService] Retrying in ${delayMs}ms...`);
+        console.debug(`[MessageService] Retrying in ${delayMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
@@ -144,6 +144,6 @@ export async function deleteMessagesByProjectId(projectId: string, conversationI
     },
   });
   const scopeLabel = conversationId ? ` (conversation ${conversationId})` : '';
-  console.log(`[MessageService] Deleted ${result.count} messages for project: ${projectId}${scopeLabel}`);
+  console.debug(`[MessageService] Deleted ${result.count} messages for project: ${projectId}${scopeLabel}`);
   return result.count;
 }

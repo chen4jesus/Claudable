@@ -36,7 +36,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   try {
 
-    console.log('📸 Asset serving request:', {
+    console.debug('📸 Asset serving request:', {
       project_id,
       filename,
       projectsDir: PROJECTS_DIR,
@@ -45,19 +45,19 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     const project = await getProjectById(project_id);
     if (!project) {
-      console.log('📸 Asset serving failed: Project not found:', project_id);
+      console.debug('📸 Asset serving failed: Project not found:', project_id);
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
     const filePath = path.join(PROJECTS_DIR_ABSOLUTE, project_id, 'assets', filename);
-    console.log('📸 Checking file path:', {
+    console.debug('📸 Checking file path:', {
       filePath,
       exists: await fs.access(filePath).then(() => true).catch(() => false)
     });
 
     const fileStat = await fs.stat(filePath).catch(() => null);
     if (!fileStat || !fileStat.isFile()) {
-      console.log('📸 Asset serving failed: File not found:', {
+      console.debug('📸 Asset serving failed: File not found:', {
         filePath,
         fileStat,
         projectAssetsDir: path.join(PROJECTS_DIR, project_id, 'assets')
@@ -66,15 +66,15 @@ export async function GET(_request: Request, { params }: RouteContext) {
       // Check if assets directory exists
       const assetsDir = path.join(PROJECTS_DIR_ABSOLUTE, project_id, 'assets');
       const assetsDirExists = await fs.access(assetsDir).then(() => true).catch(() => false);
-      console.log('📸 Assets directory exists:', assetsDirExists);
+      console.debug('📸 Assets directory exists:', assetsDirExists);
 
       // List files in assets directory if it exists
       if (assetsDirExists) {
         try {
           const files = await fs.readdir(assetsDir);
-          console.log('📸 Files in assets directory:', files);
+          console.debug('📸 Files in assets directory:', files);
         } catch (error) {
-          console.log('📸 Failed to list assets directory files:', error);
+          console.debug('📸 Failed to list assets directory files:', error);
         }
       }
 
@@ -86,7 +86,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
     response.headers.set('Content-Type', inferContentType(filename));
     response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
-    console.log('📸 Asset serving success:', {
+    console.debug('📸 Asset serving success:', {
       filename,
       size: fileBuffer.length,
       contentType: inferContentType(filename),

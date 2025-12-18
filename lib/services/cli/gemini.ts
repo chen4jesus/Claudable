@@ -145,7 +145,7 @@ async function persistAssistantMessage(
         }),
       });
 
-      console.log(`[GeminiService] Successfully persisted message on attempt ${attempt}`);
+      console.debug(`[GeminiService] Successfully persisted message on attempt ${attempt}`);
       return; // Success, exit the function
     } catch (error) {
       lastError = error as Error;
@@ -154,7 +154,7 @@ async function persistAssistantMessage(
       if (attempt < 3) {
         // Exponential backoff: 1s, 2s
         const delayMs = Math.pow(2, attempt - 1) * 1000;
-        console.log(`[GeminiService] Retrying in ${delayMs}ms...`);
+        console.debug(`[GeminiService] Retrying in ${delayMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
@@ -268,13 +268,13 @@ export async function executeGemini(
   const normalizedModel = normalizeGeminiModelId(model);
   const modelDisplayName = getGeminiModelDisplayName(normalizedModel);
 
-  console.log(`\n========================================`);
-  console.log(`[GeminiService] 🚀 Starting Gemini CLI`);
-  console.log(`[GeminiService] Project: ${projectId}`);
-  console.log(`[GeminiService] Model: ${modelDisplayName} [${normalizedModel}]`);
-  console.log(`[GeminiService] Session ID: ${sessionId || 'new session'}`);
-  console.log(`[GeminiService] Instruction: ${instruction.substring(0, 100)}...`);
-  console.log(`========================================\n`);
+  console.debug(`\n========================================`);
+  console.debug(`[GeminiService] 🚀 Starting Gemini CLI`);
+  console.debug(`[GeminiService] Project: ${projectId}`);
+  console.debug(`[GeminiService] Model: ${modelDisplayName} [${normalizedModel}]`);
+  console.debug(`[GeminiService] Session ID: ${sessionId || 'new session'}`);
+  console.debug(`[GeminiService] Instruction: ${instruction.substring(0, 100)}...`);
+  console.debug(`========================================\n`);
 
   let configuredApiKey: string | undefined;
   try {
@@ -319,12 +319,12 @@ export async function executeGemini(
   }
 
   if (configuredApiKey) {
-    console.log(`[GeminiService] API Key configured from settings (length: ${configuredApiKey.length})`);
-    console.log(`[GeminiService] Key prefix: ${configuredApiKey.substring(0, 4)}***`);
+    console.debug(`[GeminiService] API Key configured from settings (length: ${configuredApiKey.length})`);
+    console.debug(`[GeminiService] Key prefix: ${configuredApiKey.substring(0, 4)}***`);
   } else {
-    console.log('[GeminiService] No API key found in global settings. Checking process.env...');
-    if (process.env.GEMINI_API_KEY) console.log('[GeminiService] Found GEMINI_API_KEY in process.env');
-    if (process.env.GOOGLE_API_KEY) console.log('[GeminiService] Found GOOGLE_API_KEY in process.env');
+    console.debug('[GeminiService] No API key found in global settings. Checking process.env...');
+    if (process.env.GEMINI_API_KEY) console.debug('[GeminiService] Found GEMINI_API_KEY in process.env');
+    if (process.env.GOOGLE_API_KEY) console.debug('[GeminiService] Found GOOGLE_API_KEY in process.env');
   }
 
   publishStatus(projectId, 'starting', requestId);
@@ -394,11 +394,11 @@ export async function executeGemini(
   };
 
   // DEBUG: verify environment variables before spawn
-  console.log('[GeminiService] Environment check:');
-  console.log(`[GeminiService] GEMINI_API_KEY present: ${Boolean(env.GEMINI_API_KEY)}`);
-  console.log(`[GeminiService] GOOGLE_API_KEY present: ${Boolean(env.GOOGLE_API_KEY)}`);
+  console.debug('[GeminiService] Environment check:');
+  console.debug(`[GeminiService] GEMINI_API_KEY present: ${Boolean(env.GEMINI_API_KEY)}`);
+  console.debug(`[GeminiService] GOOGLE_API_KEY present: ${Boolean(env.GOOGLE_API_KEY)}`);
   if (env.GOOGLE_API_KEY) {
-    console.log(`[GeminiService] GOOGLE_API_KEY prefix: ${env.GOOGLE_API_KEY.substring(0, 4)}***`);
+    console.debug(`[GeminiService] GOOGLE_API_KEY prefix: ${env.GOOGLE_API_KEY.substring(0, 4)}***`);
   }
 
   // Declare args outside try block for error reporting
@@ -420,7 +420,7 @@ export async function executeGemini(
       geminiArgs.push('--resume', sessionId);
     }
 
-    console.log('[GeminiService] Spawning Gemini CLI with args:', geminiArgs.slice(0, 4).join(' '), '...');
+    console.debug('[GeminiService] Spawning Gemini CLI with args:', geminiArgs.slice(0, 4).join(' '), '...');
 
     let geminiProcess: ChildProcess;
     
@@ -464,11 +464,11 @@ export async function executeGemini(
           
           if (parsed.type === 'session_start' && parsed.sessionId) {
             currentSessionId = parsed.sessionId;
-            console.log(`[GeminiService] Session started: ${currentSessionId}`);
+            console.debug(`[GeminiService] Session started: ${currentSessionId}`);
             
             // Note: Gemini session ID tracking would require adding activeGeminiSessionId to the project schema
             // For now, just log the session
-            console.log(`[GeminiService] Session ID available for future resume: ${currentSessionId}`);
+            console.debug(`[GeminiService] Session ID available for future resume: ${currentSessionId}`);
           } else if (parsed.type === 'text' || parsed.type === 'content') {
             const text = parsed.text || parsed.content || '';
             if (text) {
@@ -658,7 +658,7 @@ export async function initializeNextJsProject(
   projectType?: string
 ): Promise<void> {
   const typeLabel = projectType || 'nextjs';
-  console.log(`[GeminiService] Initializing ${typeLabel} project: ${projectId}`);
+  console.debug(`[GeminiService] Initializing ${typeLabel} project: ${projectId}`);
 
   // Create prompt based on project type
   let fullPrompt: string;
@@ -721,6 +721,6 @@ export async function applyChanges(
   requestId?: string,
   projectType?: string,
 ): Promise<void> {
-  console.log(`[GeminiService] Applying changes to project: ${projectId}`);
+  console.debug(`[GeminiService] Applying changes to project: ${projectId}`);
   await executeGemini(projectId, projectPath, instruction, model, sessionId, requestId, projectType);
 }

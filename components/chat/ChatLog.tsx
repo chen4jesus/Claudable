@@ -713,7 +713,7 @@ const integrateMessages = (
             (!preservedAttachments || preservedAttachments.length === 0)
           ) {
             preservedAttachments = [...existingAttachments];
-            console.log('🖼️ Preserving optimistic attachments for request:', {
+            console.debug('🖼️ Preserving optimistic attachments for request:', {
               requestId: message.requestId,
               attachments: preservedAttachments,
             });
@@ -1162,7 +1162,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
     // Log significant events
     if (event === 'received' || event === 'processed' || event === 'replaced_optimistic') {
-      console.log(`🔍 [Lifecycle] Message ${event}:`, {
+      console.debug(`🔍 [Lifecycle] Message ${event}:`, {
         messageId,
         source: lifecycle.source,
         details,
@@ -1229,7 +1229,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     const pendingIds = pendingMessageIds.current;
 
     return () => {
-      console.log('🧹 [Cleanup] Cleaning up ChatLog state for project change');
+      console.debug('🧹 [Cleanup] Cleaning up ChatLog state for project change');
       processedIds.clear();
       processedRequests.clear();
       sources.clear();
@@ -1244,7 +1244,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     if (!projectId) return;
 
     try {
-      console.log('[ChatLog] Checking for missing messages due to network interruption...');
+      console.debug('[ChatLog] Checking for missing messages due to network interruption...');
 
       // Get current message count from UI state
       const currentMessageCount = messages.length;
@@ -1258,7 +1258,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
       // If database has more messages than UI state, trigger a reload flag
       if (totalMessages > currentMessageCount) {
-        console.log(`[ChatLog] Detected ${totalMessages - currentMessageCount} missing messages. Setting reload flag...`);
+        console.debug(`[ChatLog] Detected ${totalMessages - currentMessageCount} missing messages. Setting reload flag...`);
         // Set a flag to trigger reload in the polling effect
         setHasLoadedOnce(false);
       }
@@ -1348,7 +1348,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         Array.isArray((msg.metadata as any)?.attachments) &&
         (msg.metadata as any).attachments.length > 0
       ) {
-        console.log('🖼️ Realtime message includes attachments:', {
+        console.debug('🖼️ Realtime message includes attachments:', {
           messageId: msg.id,
           attachments: (msg.metadata as any).attachments,
         });
@@ -1512,7 +1512,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     onMessage: handleRealtimeMessage,
     onStatus: handleRealtimeStatus,
     onConnect: () => {
-      console.log('🔌 [Transport] WebSocket connected, switching to WebSocket transport');
+      console.debug('🔌 [Transport] WebSocket connected, switching to WebSocket transport');
       setEnableSseFallback(false);
       hasLoggedSseFallbackRef.current = false;
       onSseFallbackActive?.(false);
@@ -1525,7 +1525,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
       recoverMissingMessages();
     },
     onDisconnect: () => {
-      console.log('🔌 [Transport] WebSocket disconnected, preparing SSE fallback');
+      console.debug('🔌 [Transport] WebSocket disconnected, preparing SSE fallback');
       setEnableSseFallback(true);
       activeTransport.current = null; // Reset transport to allow SSE to take over
     },
@@ -1609,7 +1609,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
         // Only activate SSE if WebSocket is not connected
         if (activeTransport.current === 'websocket') {
-          console.log('🔄 [Transport] WebSocket is active, skipping SSE connection');
+          console.debug('🔄 [Transport] WebSocket is active, skipping SSE connection');
           return;
         }
 
@@ -1630,7 +1630,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         eventSource = source;
 
         source.onopen = () => {
-          console.log('🔄 [Transport] SSE connection established');
+          console.debug('🔄 [Transport] SSE connection established');
           setIsSseConnected(true);
           onSseFallbackActive?.(true);
           // Recover any missing messages that might have been lost during SSE disconnection
@@ -1893,7 +1893,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
             ? expandMessagesList(chatMessages.map(toChatMessage), ensureStableMessageId)
             : [];
 
-          console.log('[ChatLog] Loaded messages from API:', {
+          console.debug('[ChatLog] Loaded messages from API:', {
             totalMessages: normalized.length,
             messagesWithMetadata: normalized.filter(msg => !!msg.metadata).length,
             messagesWithAttachments: normalized.filter(msg =>
@@ -1906,7 +1906,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
           // Update pagination state
           if (payload.pagination) {
-            console.log(`[ChatLog] Loaded ${payload.pagination.count}/${payload.totalCount} messages`);
+            console.debug(`[ChatLog] Loaded ${payload.pagination.count}/${payload.totalCount} messages`);
             setHasMoreMessages(payload.pagination.hasMore || false);
             setTotalMessageCount(payload.totalCount || 0);
           } else {
@@ -1916,7 +1916,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
           normalized.forEach((message) => {
             if (Array.isArray((message.metadata as any)?.attachments) && (message.metadata as any).attachments.length > 0) {
-              console.log('🖼️ DB loaded message with attachments:', {
+              console.debug('🖼️ DB loaded message with attachments:', {
                 messageId: message.id,
                 attachments: (message.metadata as any).attachments,
               });
@@ -1972,7 +1972,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         if (payload.pagination) {
           setHasMoreMessages(payload.pagination.hasMore || false);
           setTotalMessageCount(payload.totalCount || 0);
-          console.log(`[ChatLog] Loaded ${payload.pagination.count} older messages (${messages.length + normalized.length}/${payload.totalCount} total)`);
+          console.debug(`[ChatLog] Loaded ${payload.pagination.count} older messages (${messages.length + normalized.length}/${payload.totalCount} total)`);
         }
 
         // Prepend older messages to the existing list
@@ -2039,7 +2039,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
           if (session.status === 'active' || session.status === 'running') {
             if (process.env.NODE_ENV === 'development') {
-              console.log('Found active session:', session.sessionId);
+              console.debug('Found active session:', session.sessionId);
             }
             onSessionStatusChange?.(true);
 
@@ -2457,7 +2457,7 @@ const ToolResultMessage = ({
 
     // **Important**: Always display messages that include attachments
     if (metadata && metadata.attachments && Array.isArray(metadata.attachments) && metadata.attachments.length > 0) {
-      console.log('🖼️ Message has attachments, displaying:', { messageId: message.id, attachments: metadata.attachments });
+      console.debug('🖼️ Message has attachments, displaying:', { messageId: message.id, attachments: metadata.attachments });
       return true;
     }
 
@@ -2510,7 +2510,7 @@ const ToolResultMessage = ({
 
     // **Important**: Also display messages that match the legacy image-path pattern
     if (contentText && contentText.includes('Image #') && contentText.includes('path:')) {
-      console.log('🖼️ Message contains image paths, displaying:', { messageId: message.id, content: contentText });
+      console.debug('🖼️ Message contains image paths, displaying:', { messageId: message.id, content: contentText });
       return true;
     }
 
@@ -2681,7 +2681,7 @@ const ToolResultMessage = ({
   useEffect(() => {
     if (onAddUserMessage) {
       const addMessage = (message: ChatMessage) => {
-        console.log('🔄 [Parent] Adding message via parent callback:', {
+        console.debug('🔄 [Parent] Adding message via parent callback:', {
           messageId: message.id,
           role: message.role,
           isOptimistic: message.isOptimistic,
@@ -2691,7 +2691,7 @@ const ToolResultMessage = ({
         setMessages((prev) => {
           const exists = prev.some(m => m.id === message.id);
           if (exists) {
-            console.log('🔄 [Parent] Message already exists, skipping:', message.id);
+            console.debug('🔄 [Parent] Message already exists, skipping:', message.id);
             return prev;
           }
 
@@ -2702,7 +2702,7 @@ const ToolResultMessage = ({
             );
 
             if (optimisticMessages.length > 0) {
-              console.log('🔄 [Parent] Found optimistic messages to replace via parent callback:', {
+              console.debug('🔄 [Parent] Found optimistic messages to replace via parent callback:', {
                 count: optimisticMessages.length,
                 requestId: message.requestId,
                 realId: message.id,
@@ -2715,7 +2715,7 @@ const ToolResultMessage = ({
               optimisticMessages.forEach(optimisticMessage => {
                 const index = newMessages.findIndex(m => m.id === optimisticMessage.id);
                 if (index !== -1) {
-                  console.log('🔄 [Parent] Removing optimistic message:', optimisticMessage.id);
+                  console.debug('🔄 [Parent] Removing optimistic message:', optimisticMessage.id);
                   newMessages.splice(index, 1);
                 }
               });
@@ -2729,7 +2729,7 @@ const ToolResultMessage = ({
       };
 
       const removeMessage = (messageId: string) => {
-        console.log('🔄 [Parent] Removing message via parent callback:', messageId);
+        console.debug('🔄 [Parent] Removing message via parent callback:', messageId);
         setMessages((prev) => prev.filter(m => m.id !== messageId));
       };
 
@@ -2857,12 +2857,12 @@ const ToolResultMessage = ({
                                 const attachments = Array.isArray((messageMetadata as Record<string, any>)?.attachments)
                                   ? ((messageMetadata as Record<string, any>).attachments as any[])
                                   : [];
-                                console.log('🖼️ Message attachments:', attachments);
+                                console.debug('🖼️ Message attachments:', attachments);
                                 if (attachments.length > 0) {
                                   return (
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       {attachments.map((attachment: any, idx: number) => {
-                                        console.log(`🖼️ Processing attachment ${idx}:`, attachment);
+                                        console.debug(`🖼️ Processing attachment ${idx}:`, attachment);
                                         const candidateRawUrls: string[] = [];
                                         const pushCandidate = (value: unknown) => {
                                           if (typeof value === 'string') {
@@ -2880,7 +2880,7 @@ const ToolResultMessage = ({
 
                                         const uniqueCandidates = Array.from(new Set(candidateRawUrls));
                                         if (uniqueCandidates.length === 0) {
-                                          console.log(`🖼️ No URL found for attachment ${idx}`);
+                                          console.debug(`🖼️ No URL found for attachment ${idx}`);
                                           return null;
                                         }
                                         const resolveUrl = (value: string) => {
@@ -2898,11 +2898,11 @@ const ToolResultMessage = ({
                                           resolvedCandidates.find(url => !failedImageUrls.has(url)) ??
                                           resolvedCandidates[0];
                                         if (!imageUrl) {
-                                          console.log(`🖼️ Failed to resolve any URL for attachment ${idx}`);
+                                          console.debug(`🖼️ Failed to resolve any URL for attachment ${idx}`);
                                           return null;
                                         }
                                         const allCandidatesFailed = resolvedCandidates.every(url => failedImageUrls.has(url));
-                                        console.log(`🖼️ Resolved image URL for attachment ${idx}:`, imageUrl, {
+                                        console.debug(`🖼️ Resolved image URL for attachment ${idx}:`, imageUrl, {
                                           candidates: resolvedCandidates,
                                           allCandidatesFailed,
                                         });

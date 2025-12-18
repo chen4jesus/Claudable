@@ -764,7 +764,7 @@ class PreviewManager {
     const logs: string[] = [];
     const record = (message: string) => {
       const formatted = `[PreviewManager] ${message}`;
-      console.log(formatted);
+      console.debug(formatted);
       logs.push(formatted);
     };
 
@@ -853,7 +853,7 @@ class PreviewManager {
     const pendingLogs: string[] = [];
     const queueLog = (message: string) => {
       const formatted = `[PreviewManager] ${message}`;
-      console.log(formatted);
+      console.debug(formatted);
       pendingLogs.push(formatted);
     };
 
@@ -878,7 +878,7 @@ class PreviewManager {
       if (project.templateType === 'flask') {
         const appPyExists = await fileExists(path.join(projectPath, 'app.py'));
         if (!appPyExists) {
-            console.log(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+            console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
             await scaffoldFlaskApp(projectPath, projectId);
         }
       } else {
@@ -886,16 +886,16 @@ class PreviewManager {
       }
     } catch {
       if (project.templateType === 'static-html') {
-        console.log(
+        console.debug(
           `[PreviewManager] Bootstrapping static HTML app for project ${projectId}`
         );
         await scaffoldStaticHtmlApp(projectPath, projectId);
       } else if (project.templateType === 'flask') {
          // Should be handled above, but fallback just in case
-         console.log(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+         console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
          await scaffoldFlaskApp(projectPath, projectId);
       } else {
-        console.log(
+        console.debug(
           `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
         );
         await scaffoldBasicNextApp(projectPath, projectId);
@@ -1115,7 +1115,7 @@ class PreviewManager {
           ? path.resolve(project.repoPath)
           : path.join(process.cwd(), 'projects', projectId);
         try {
-            await this.cleanupSmartEditScript(projectPath, (msg) => console.log(`[PreviewManager] ${msg}`));
+            await this.cleanupSmartEditScript(projectPath, (msg) => console.debug(`[PreviewManager] ${msg}`));
         } catch (e) {
             console.warn('[PreviewManager] Failed to cleanup script on stop:', e);
         }
@@ -1170,7 +1170,7 @@ ${scriptContent}
 `;
     
     // 2. Inject into ALL HTML files (recursively find .html)
-    const log = (msg: string) => console.log(`[PreviewManager] [Inject] ${msg}`);
+    const log = (msg: string) => console.debug(`[PreviewManager] [Inject] ${msg}`);
 
     const injectRecursively = async (dir: string) => {
         try {

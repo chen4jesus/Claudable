@@ -570,16 +570,16 @@ export async function executeClaude(
   requestId?: string,
   projectType?: string
 ): Promise<void> {
-  console.log(`\n========================================`);
-  console.log(`[ClaudeService] 🚀 Starting Claude Agent SDK`);
-  console.log(`[ClaudeService] Project: ${projectId}`);
+  console.debug(`\n========================================`);
+  console.debug(`[ClaudeService] 🚀 Starting Claude Agent SDK`);
+  console.debug(`[ClaudeService] Project: ${projectId}`);
   const resolvedModel = resolveModelId(model);
   const modelLabel = getClaudeModelDisplayName(resolvedModel);
   const aliasNote = resolvedModel !== model ? ` (alias for ${model})` : '';
-  console.log(`[ClaudeService] Model: ${modelLabel} [${resolvedModel}]${aliasNote}`);
-  console.log(`[ClaudeService] Session ID: ${sessionId || 'new session'}`);
-  console.log(`[ClaudeService] Instruction: ${instruction.substring(0, 100)}...`);
-  console.log(`========================================\n`);
+  console.debug(`[ClaudeService] Model: ${modelLabel} [${resolvedModel}]${aliasNote}`);
+  console.debug(`[ClaudeService] Session ID: ${sessionId || 'new session'}`);
+  console.debug(`[ClaudeService] Instruction: ${instruction.substring(0, 100)}...`);
+  console.debug(`========================================\n`);
 
   const configuredMaxTokens = Number(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS);
   const maxOutputTokens = Number.isFinite(configuredMaxTokens) && configuredMaxTokens > 0
@@ -659,7 +659,7 @@ export async function executeClaude(
 
   try {
     // Verify project exists (prevents foreign key constraint errors)
-    console.log(`[ClaudeService] 🔍 Verifying project exists...`);
+    console.debug(`[ClaudeService] 🔍 Verifying project exists...`);
     const project = await getProjectById(projectId);
     if (!project) {
       const errorMessage = `Project not found: ${projectId}. Cannot create messages for non-existent project.`;
@@ -674,10 +674,10 @@ export async function executeClaude(
       throw new Error(errorMessage);
     }
 
-    console.log(`[ClaudeService] ✅ Project verified: ${project.name}`);
+    console.debug(`[ClaudeService] ✅ Project verified: ${project.name}`);
 
     // Validate and prepare project path
-    console.log(`[ClaudeService] 🔒 Validating project path...`);
+    console.debug(`[ClaudeService] 🔒 Validating project path...`);
 
     // Convert to absolute path
     const absoluteProjectPath = path.isAbsolute(projectPath)
@@ -705,9 +705,9 @@ export async function executeClaude(
     // Check project directory exists and create if needed
     try {
       await fs.access(absoluteProjectPath);
-      console.log(`[ClaudeService] ✅ Project directory exists: ${absoluteProjectPath}`);
+      console.debug(`[ClaudeService] ✅ Project directory exists: ${absoluteProjectPath}`);
     } catch {
-      console.log(`[ClaudeService] 📁 Creating project directory: ${absoluteProjectPath}`);
+      console.debug(`[ClaudeService] 📁 Creating project directory: ${absoluteProjectPath}`);
       await fs.mkdir(absoluteProjectPath, { recursive: true });
     }
 
@@ -715,8 +715,8 @@ export async function executeClaude(
     publishStatus('ready', 'Project verified. Starting AI...');
 
     // Start Claude Agent SDK query
-    console.log(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
-    console.log(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
+    console.debug(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
+    console.debug(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
     const response = query({
       prompt: instruction,
       options: {
@@ -754,12 +754,12 @@ export async function executeClaude(
 
     // Handle streaming response
     for await (const message of response) {
-      console.log('[ClaudeService] Message type:', message.type);
+      console.debug('[ClaudeService] Message type:', message.type);
 
       if (message.type === 'stream_event') {
         const event: any = (message as any).event ?? {};
         const sessionKey = (message.session_id ?? message.uuid ?? 'default').toString();
-        console.log('[ClaudeService] Stream event type:', event.type);
+        console.debug('[ClaudeService] Stream event type:', event.type);
 
         let streamState = assistantStreamStates.get(sessionKey);
 
@@ -945,7 +945,7 @@ export async function executeClaude(
       if (message.type === 'system' && message.subtype === 'init') {
         // Initialize session
         currentSessionId = message.session_id;
-        console.log(`[ClaudeService] Session initialized: ${currentSessionId}`);
+        console.debug(`[ClaudeService] Session initialized: ${currentSessionId}`);
 
         // Save session ID to project
         if (currentSessionId) {
@@ -1043,7 +1043,7 @@ export async function executeClaude(
           content = parts.join('\n');
         }
 
-        console.log('[ClaudeService] Assistant message:', content.substring(0, 100));
+        console.debug('[ClaudeService] Assistant message:', content.substring(0, 100));
 
         // Save message to DB
         if (content) {
@@ -1065,7 +1065,7 @@ export async function executeClaude(
         }
       } else if (message.type === 'result') {
         // Final result
-        console.log('[ClaudeService] Task completed:', message.subtype);
+        console.debug('[ClaudeService] Task completed:', message.subtype);
 
         publishStatus('completed');
         emittedCompletedStatus = true;
@@ -1073,7 +1073,7 @@ export async function executeClaude(
       }
     }
 
-    console.log('[ClaudeService] Streaming completed');
+    console.debug('[ClaudeService] Streaming completed');
     await safeMarkCompleted();
     if (!emittedCompletedStatus) {
       publishStatus('completed');
@@ -1155,7 +1155,7 @@ export async function initializeNextJsProject(
   projectType?: string
 ): Promise<void> {
   const typeLabel = projectType || 'nextjs';
-  console.log(`[ClaudeService] Initializing ${typeLabel} project: ${projectId}`);
+  console.debug(`[ClaudeService] Initializing ${typeLabel} project: ${projectId}`);
 
   // Create prompt based on project type
   let fullPrompt: string;
@@ -1226,6 +1226,6 @@ export async function applyChanges(
   requestId?: string,
   projectType?: string
 ): Promise<void> {
-  console.log(`[ClaudeService] Applying changes to project: ${projectId}`);
+  console.debug(`[ClaudeService] Applying changes to project: ${projectId}`);
   await executeClaude(projectId, projectPath, instruction, model, sessionId, requestId, projectType);
 }

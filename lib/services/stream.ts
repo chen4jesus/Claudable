@@ -117,7 +117,7 @@ export class StreamManager {
         }
       });
       this.streams.delete(projectId);
-      console.log(`[StreamManager] Closed all streams for project: ${projectId}`);
+      console.debug(`[StreamManager] Closed all streams for project: ${projectId}`);
     }
   }
 
@@ -128,7 +128,7 @@ export class StreamManager {
     this.streams.forEach((projectStreams, projectId) => {
       this.closeProjectStreams(projectId);
     });
-    console.log(`[StreamManager] Closed all streams`);
+    console.debug(`[StreamManager] Closed all streams`);
   }
 }
 

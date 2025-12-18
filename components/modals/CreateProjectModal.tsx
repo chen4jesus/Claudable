@@ -326,7 +326,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
 
           if (data.type === 'project_status') {
             const { status, message } = data.data || data;
-            console.log('📊 Project status received:', status, message);
+            console.debug('📊 Project status received:', status, message);
 
             if (message) {
               setInitializationStep(message);
@@ -355,7 +355,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts += 1;
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000);
-          console.log(`🔄 Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+          console.debug(`🔄 Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
           reconnectTimeout = setTimeout(connect, delay);
         } else if (reconnectAttempts >= maxReconnectAttempts) {
           console.error('❌ Max reconnection attempts reached. Please refresh the page.');
@@ -472,7 +472,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       return; // Don't submit if there's an image compatibility error
     }
     
-    console.log('Creating project with:', { finalCLI, finalModel, useDefaultSettings, globalSettings });
+    console.debug('Creating project with:', { finalCLI, finalModel, useDefaultSettings, globalSettings });
     
     const name = projectName.trim() || 'New Project';
     const projectUuid = generateUUID();
@@ -511,7 +511,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         projectData.imageUrl = imageUrl;
       }
       
-      console.log('Sending project data:', JSON.stringify(projectData, null, 2));
+      console.debug('Sending project data:', JSON.stringify(projectData, null, 2));
       
       // 3. Project creation request
       setInitializationStep('Creating project...');
@@ -543,12 +543,12 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       // Start polling project status as a fallback
       pollInterval = setInterval(async () => {
         try {
-          console.log('📊 Polling project status for:', projectUuid);
+          console.debug('📊 Polling project status for:', projectUuid);
           const response = await fetch(`${API_BASE}/api/projects/${projectUuid}`);
           if (response.ok) {
             const payload = await response.json();
             const project = payload?.data ?? payload;
-            console.log('📊 Project status from polling:', project?.status);
+            console.debug('📊 Project status from polling:', project?.status);
             
             if (project?.status === 'active') {
               if (pollInterval) clearInterval(pollInterval);
@@ -573,7 +573,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       // Ultimate fallback timeout
       setTimeout(() => {
         if (showInitialization && initializingProjectId === projectUuid) {
-          console.log('⏰ Ultimate timeout reached, redirecting to chat page as fallback');
+          console.debug('⏰ Ultimate timeout reached, redirecting to chat page as fallback');
           if (pollInterval) clearInterval(pollInterval);
           setInitializationStep('Project ready! Redirecting...');
           setTimeout(() => {

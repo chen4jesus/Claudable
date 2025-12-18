@@ -254,7 +254,7 @@ export function useWebSocket({
             );
             const jitter = Math.random() * 1000; // Add 0-1s jitter
             delay = exponentialDelay + jitter;
-            console.log(`[WebSocket] Reconnecting in ${Math.round(delay)}ms (attempt ${attempts}/${WEBSOCKET_CONFIG.MAX_RECONNECT_ATTEMPTS})`);
+            console.debug(`[WebSocket] Reconnecting in ${Math.round(delay)}ms (attempt ${attempts}/${WEBSOCKET_CONFIG.MAX_RECONNECT_ATTEMPTS})`);
           }
 
           reconnectTimeoutRef.current = setTimeout(() => {
@@ -322,7 +322,7 @@ export function useWebSocket({
   }, []);
 
   const manualReconnect = useCallback(() => {
-    console.log('[WebSocket] Manual reconnect triggered');
+    console.debug('[WebSocket] Manual reconnect triggered');
     shouldReconnectRef.current = true;
     connectionAttemptsRef.current = 0; // Reset attempt counter
     disconnect();

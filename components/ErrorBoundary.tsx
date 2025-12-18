@@ -111,7 +111,7 @@ export function ChatErrorBoundary({ children }: { children: ReactNode }) {
       onError={(error) => {
         console.error('[ChatErrorBoundary] Error in chat component:', error);
         // Provide a more user-friendly error message
-        console.log('💡 Tip: Check your network connection or refresh the page.');
+        console.debug('💡 Tip: Check your network connection or refresh the page.');
       }}
     >
       {children}

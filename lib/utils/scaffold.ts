@@ -312,7 +312,7 @@ function resolvePort(preferredPort) {
   process.env.WEB_PORT = String(port);
   process.env.NEXT_PUBLIC_APP_URL = url;
 
-  console.log(\`🚀 Starting Next.js dev server on \${url}\`);
+  console.debug(\`🚀 Starting Next.js dev server on \${url}\`);
 
   const child = spawn(
     'npx',
@@ -409,7 +409,7 @@ h1 {
 
   await writeFileIfMissing(
     path.join(projectPath, 'script.js'),
-    `console.log('Script loaded!');
+    `console.debug('Script loaded!');
 `
   );
 
@@ -448,8 +448,8 @@ if (serveTarget === '.' && fs.existsSync(path.join(projectRoot, 'public'))) {
     serveTarget = 'public';
 }
 
-console.log(\`🚀 Starting static file server on port \${port}\`);
-console.log(\`📂 Serving directory: \${serveTarget}\`);
+console.debug(\`🚀 Starting static file server on port \${port}\`);
+console.debug(\`📂 Serving directory: \${serveTarget}\`);
 
 const child = spawn(
   'npx',

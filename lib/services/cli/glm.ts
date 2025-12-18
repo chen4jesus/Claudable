@@ -148,7 +148,7 @@ async function persistAssistantMessage(
         }),
       });
 
-      console.log(`[GLMService] Successfully persisted message on attempt ${attempt}`);
+      console.debug(`[GLMService] Successfully persisted message on attempt ${attempt}`);
       return; // Success, exit the function
     } catch (error) {
       lastError = error as Error;
@@ -157,7 +157,7 @@ async function persistAssistantMessage(
       if (attempt < 3) {
         // Exponential backoff: 1s, 2s
         const delayMs = Math.pow(2, attempt - 1) * 1000;
-        console.log(`[GLMService] Retrying in ${delayMs}ms...`);
+        console.debug(`[GLMService] Retrying in ${delayMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
@@ -761,7 +761,7 @@ export async function initializeNextJsProject(
   projectType?: string
 ): Promise<void> {
   const typeLabel = projectType || 'nextjs';
-  console.log(`[GLMService] Initializing ${typeLabel} project: ${projectId}`);
+  console.debug(`[GLMService] Initializing ${typeLabel} project: ${projectId}`);
 
   // Create prompt based on project type
   let fullPrompt: string;

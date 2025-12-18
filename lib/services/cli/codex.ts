@@ -548,7 +548,7 @@ async function executeCodex(
     promptWithContext,
   ];
 
-  console.log('[CodexService] Spawning Codex CLI', {
+  console.debug('[CodexService] Spawning Codex CLI', {
     projectId,
     repoPath,
     model: normalizedModel,

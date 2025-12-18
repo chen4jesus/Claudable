@@ -79,7 +79,7 @@ export default function ChatInput({
   const supportsImageUpload = preferredCli !== 'cursor' && preferredCli !== 'qwen' && preferredCli !== 'glm';
 
   // Log CLI compatibility details
-  console.log('🔧 CLI Compatibility Check:', {
+  console.debug('🔧 CLI Compatibility Check:', {
     preferredCli,
     supportsImageUpload,
     projectId: projectId ? 'valid' : 'missing',
@@ -88,11 +88,11 @@ export default function ChatInput({
 
   // Inform the user about the current state
   if (supportsImageUpload && projectId) {
-    console.log('✅ Image upload is ready! Click the upload button or drag in a file.');
+    console.debug('✅ Image upload is ready! Click the upload button or drag in a file.');
   } else if (!supportsImageUpload) {
-    console.log('❌ The current CLI does not support image uploads. Please switch to Claude CLI.');
+    console.debug('❌ The current CLI does not support image uploads. Please switch to Claude CLI.');
   } else {
-    console.log('❌ Please select a project.');
+    console.debug('❌ Please select a project.');
   }
 
   const modelOptionsForCli = useMemo(
@@ -172,7 +172,7 @@ export default function ChatInput({
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('📸 File input change event triggered:', {
+    console.debug('📸 File input change event triggered:', {
       hasFiles: !!e.target.files,
       fileCount: e.target.files?.length || 0,
       files: Array.from(e.target.files || []).map(f => ({
@@ -185,11 +185,11 @@ export default function ChatInput({
 
     const files = e.target.files;
     if (!files) {
-      console.log('📸 No files selected');
+      console.debug('📸 No files selected');
       return;
     }
 
-    console.log('📸 Calling handleFiles with files');
+    console.debug('📸 Calling handleFiles with files');
     await handleFiles(files);
   };
 
@@ -217,7 +217,7 @@ export default function ChatInput({
       return;
     }
 
-    console.log('📸 Starting image upload process:', {
+    console.debug('📸 Starting image upload process:', {
       projectId,
       cli: preferredCli,
       fileCount: files.length
@@ -235,7 +235,7 @@ export default function ChatInput({
           continue;
         }
 
-        console.log(`📸 Uploading image ${i + 1}/${files.length}:`, file.name);
+        console.debug(`📸 Uploading image ${i + 1}/${files.length}:`, file.name);
 
         const formData = new FormData();
         formData.append('file', file);
@@ -252,7 +252,7 @@ export default function ChatInput({
         }
 
         const result = await response.json();
-        console.log('✅ Image upload successful:', result);
+        console.debug('✅ Image upload successful:', result);
         const imageUrl = URL.createObjectURL(file);
 
         const newImage: UploadedImage = {
@@ -264,10 +264,10 @@ export default function ChatInput({
           publicUrl: typeof result.public_url === 'string' ? result.public_url : undefined
         };
 
-        console.log('📸 Created UploadedImage object:', newImage);
+        console.debug('📸 Created UploadedImage object:', newImage);
         setUploadedImages(prev => {
           const updatedImages = [...prev, newImage];
-          console.log('📸 Updated uploadedImages state:', {
+          console.debug('📸 Updated uploadedImages state:', {
             totalCount: updatedImages.length,
             images: updatedImages.map(img => ({
               id: img.id,
@@ -346,11 +346,11 @@ export default function ChatInput({
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('📸 Drag enter event triggered:', { projectId, supportsImageUpload });
+    console.debug('📸 Drag enter event triggered:', { projectId, supportsImageUpload });
     if (projectId && supportsImageUpload) {
       setIsDragOver(true);
     } else {
-      console.log('📸 Drag enter ignored: missing projectId or unsupported CLI');
+      console.debug('📸 Drag enter ignored: missing projectId or unsupported CLI');
     }
   };
 
@@ -377,7 +377,7 @@ export default function ChatInput({
     e.stopPropagation();
     setIsDragOver(false);
 
-    console.log('📸 Drop event triggered:', {
+    console.debug('📸 Drop event triggered:', {
       hasFiles: !!e.dataTransfer.files,
       fileCount: e.dataTransfer.files?.length || 0,
       projectId,
@@ -390,16 +390,16 @@ export default function ChatInput({
     });
 
     if (!projectId || !supportsImageUpload) {
-      console.log('📸 Drop event blocked: missing projectId or unsupported CLI');
+      console.debug('📸 Drop event blocked: missing projectId or unsupported CLI');
       return;
     }
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      console.log('📸 Calling handleFiles with dropped files');
+      console.debug('📸 Calling handleFiles with dropped files');
       handleFiles(files);
     } else {
-      console.log('📸 No files in drop event');
+      console.debug('📸 No files in drop event');
     }
   };
 
@@ -451,14 +451,14 @@ export default function ChatInput({
                   className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Upload images"
                   onClick={() => {
-                    console.log('📸 Upload button clicked:', {
+                    console.debug('📸 Upload button clicked:', {
                       projectId,
                       supportsImageUpload,
                       isUploading,
                       disabled
                     });
                     if (fileInputRef.current) {
-                      console.log('📸 Triggering file input click');
+                      console.debug('📸 Triggering file input click');
                       fileInputRef.current.click();
                     } else {
                       console.error('📸 fileInputRef is null');

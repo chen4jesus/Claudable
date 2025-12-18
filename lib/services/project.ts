@@ -68,7 +68,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
     },
   });
 
-  console.log(`[ProjectService] Created project: ${project.id}`);
+  console.debug(`[ProjectService] Created project: ${project.id}`);
   return {
     ...project,
     selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
@@ -102,7 +102,7 @@ export async function updateProject(
     },
   });
 
-  console.log(`[ProjectService] Updated project: ${id}`);
+  console.debug(`[ProjectService] Updated project: ${id}`);
   return {
     ...project,
     selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
@@ -128,7 +128,7 @@ export async function deleteProject(id: string): Promise<void> {
     where: { id },
   });
 
-  console.log(`[ProjectService] Deleted project: ${id}`);
+  console.debug(`[ProjectService] Deleted project: ${id}`);
 }
 
 /**
@@ -157,7 +157,7 @@ export async function updateProjectStatus(
       updatedAt: new Date(),
     },
   });
-  console.log(`[ProjectService] Updated project status: ${id} -> ${status}`);
+  console.debug(`[ProjectService] Updated project status: ${id} -> ${status}`);
 }
 
 export interface ProjectCliPreference {

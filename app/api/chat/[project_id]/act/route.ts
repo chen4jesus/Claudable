@@ -315,7 +315,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         : undefined;
 
-    console.log('📸 Creating message with attachments:', {
+    console.debug('📸 Creating message with attachments:', {
       projectId: project_id,
       hasAttachments: processedImages.length > 0,
       attachmentsCount: processedImages.length,
@@ -334,7 +334,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       requestId: requestId,
     });
 
-    console.log('📸 Message created successfully:', {
+    console.debug('📸 Message created successfully:', {
       messageId: userMessage.id,
       hasMetadata: Boolean(metadata),
       metadataType: metadata ? typeof metadata : 'undefined',

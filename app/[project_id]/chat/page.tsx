@@ -652,7 +652,7 @@ const persistProjectPreferences = useCallback(
     setDeploymentStatus('deploying');
     setDeploymentId(depId);
     
-    console.log('🔍 Monitoring deployment:', depId);
+    console.debug('🔍 Monitoring deployment:', depId);
     
     deployPollRef.current = setInterval(async () => {
       try {
@@ -672,12 +672,12 @@ const persistProjectPreferences = useCallback(
         
         // Stop polling if no active deployment (completed)
         if (!data.has_deployment) {
-          console.log('🔍 Deployment completed - no active deployment');
+          console.debug('🔍 Deployment completed - no active deployment');
 
           // Set final deployment URL
           if (data.last_deployment_url) {
             const url = String(data.last_deployment_url).startsWith('http') ? data.last_deployment_url : `https://${data.last_deployment_url}`;
-            console.log('🔍 Deployment complete! URL:', url);
+            console.debug('🔍 Deployment complete! URL:', url);
             setPublishedUrl(url);
             setDeploymentStatus('ready');
           } else {
@@ -699,7 +699,7 @@ const persistProjectPreferences = useCallback(
         
         // Log only status changes
         if (status && status !== 'QUEUED') {
-          console.log('🔍 Deployment status:', status);
+          console.debug('🔍 Deployment status:', status);
         }
         
         // Check if deployment is ready or failed
@@ -728,7 +728,7 @@ const persistProjectPreferences = useCallback(
         
         if (isReady && data.deployment_url) {
           const url = String(data.deployment_url).startsWith('http') ? data.deployment_url : `https://${data.deployment_url}`;
-          console.log('🔍 Deployment complete! URL:', url);
+          console.debug('🔍 Deployment complete! URL:', url);
           setPublishedUrl(url);
           setDeploymentStatus('ready');
           
@@ -765,7 +765,7 @@ const persistProjectPreferences = useCallback(
           setPublishLoading(false);
           setShowPublishPanel(true);
           startDeploymentPolling(data.deployment_id);
-          console.log('🔍 Resuming deployment monitoring:', data.deployment_id);
+          console.debug('🔍 Resuming deployment monitoring:', data.deployment_id);
         }
       }
     } catch (e) {
@@ -1429,13 +1429,13 @@ const persistProjectPreferences = useCallback(
 
   const loadSettings = useCallback(async (projectSettings?: { cli?: string; model?: string }) => {
     try {
-      console.log('🔧 loadSettings called with project settings:', projectSettings);
+      console.debug('🔧 loadSettings called with project settings:', projectSettings);
 
       const hasCliSet = projectSettings?.cli || preferredCli;
       const hasModelSet = projectSettings?.model || selectedModel;
 
       if (!hasCliSet || !hasModelSet) {
-        console.log('⚠️ Missing CLI or model, loading global settings');
+        console.debug('⚠️ Missing CLI or model, loading global settings');
         const globalResponse = await fetch(`${API_BASE}/api/settings/global`);
         if (globalResponse.ok) {
           const globalSettings = await globalResponse.json();
@@ -1443,7 +1443,7 @@ const persistProjectPreferences = useCallback(
           const cliToUse = sanitizeCli(hasCliSet || defaultCli);
 
           if (!hasCliSet) {
-            console.log('🔄 Setting CLI from global:', cliToUse);
+            console.debug('🔄 Setting CLI from global:', cliToUse);
             updatePreferredCli(cliToUse);
           }
 
@@ -1505,7 +1505,7 @@ const persistProjectPreferences = useCallback(
           ? project.selected_model
           : undefined;
 
-      console.log('📋 Loading project info:', {
+      console.debug('📋 Loading project info:', {
         preferredCli: rawPreferredCli,
         selectedModel: rawSelectedModel,
       });
@@ -1619,7 +1619,7 @@ const persistProjectPreferences = useCallback(
   // Stable message handlers with useCallback to prevent reassignment
   const createStableMessageHandlers = useCallback(() => {
     const addMessage = (message: any) => {
-      console.log('🔄 [StableHandler] Adding message via stable handler:', {
+      console.debug('🔄 [StableHandler] Adding message via stable handler:', {
         messageId: message.id,
         role: message.role,
         isOptimistic: message.isOptimistic,
@@ -1629,7 +1629,7 @@ const persistProjectPreferences = useCallback(
       // Track optimistic messages by requestId
       if (message.isOptimistic && message.requestId) {
         optimisticMessagesRef.current.set(message.requestId, message);
-        console.log('🔄 [StableHandler] Tracking optimistic message:', {
+        console.debug('🔄 [StableHandler] Tracking optimistic message:', {
           requestId: message.requestId,
           tempId: message.id
         });
@@ -1642,14 +1642,14 @@ const persistProjectPreferences = useCallback(
     };
 
     const removeMessage = (messageId: string) => {
-      console.log('🔄 [StableHandler] Removing message via stable handler:', messageId);
+      console.debug('🔄 [StableHandler] Removing message via stable handler:', messageId);
 
       // Remove from optimistic messages tracking if it's an optimistic message
       const optimisticMessage = Array.from(optimisticMessagesRef.current.values())
         .find(msg => msg.id === messageId);
       if (optimisticMessage && optimisticMessage.requestId) {
         optimisticMessagesRef.current.delete(optimisticMessage.requestId);
-        console.log('🔄 [StableHandler] Removed optimistic message tracking:', {
+        console.debug('🔄 [StableHandler] Removed optimistic message tracking:', {
           requestId: optimisticMessage.requestId,
           tempId: messageId
         });
@@ -1734,7 +1734,7 @@ const persistProjectPreferences = useCallback(
 
     // Check for duplicate pending requests
     if (pendingRequestsRef.current.has(requestFingerprint)) {
-      console.log('🔄 [DEBUG] Duplicate request detected, skipping:', requestFingerprint);
+      console.debug('🔄 [DEBUG] Duplicate request detected, skipping:', requestFingerprint);
       return;
     }
 
@@ -1795,7 +1795,7 @@ const persistProjectPreferences = useCallback(
         };
       };
 
-      console.log('🖼️ Processing images in runAct:', {
+      console.debug('🖼️ Processing images in runAct:', {
           imageCount: imagesToUse.length,
           cli: preferredCli,
           requestId
@@ -1804,7 +1804,7 @@ const persistProjectPreferences = useCallback(
 
       for (let i = 0; i < imagesToUse.length; i += 1) {
         const image = imagesToUse[i];
-        console.log(`🖼️ Processing image ${i}:`, {
+        console.debug(`🖼️ Processing image ${i}:`, {
           id: image.id,
           filename: image.filename,
           hasPath: !!image.path,
@@ -1822,7 +1822,7 @@ const persistProjectPreferences = useCallback(
             public_url: candidatePublicUrl,
             publicUrl: candidatePublicUrl,
           };
-          console.log(`🖼️ Created processed image ${i}:`, processedImage);
+          console.debug(`🖼️ Created processed image ${i}:`, processedImage);
           processedImages.push(processedImage);
           continue;
         }
@@ -1852,7 +1852,7 @@ const persistProjectPreferences = useCallback(
         selectedModel,
       };
 
-      console.log('📸 Sending request to act API:', {
+      console.debug('📸 Sending request to act API:', {
         messageLength: finalMessage.length,
         imageCount: processedImages.length,
         cli: preferredCli,
@@ -1893,7 +1893,7 @@ const persistProjectPreferences = useCallback(
                 }
               : undefined,
         };
-        console.log('🔄 [Optimistic] Adding optimistic user message via stable handler:', {
+        console.debug('🔄 [Optimistic] Adding optimistic user message via stable handler:', {
           tempId: tempUserMessageId,
           requestId,
           content: finalMessage.substring(0, 50) + '...'
@@ -1928,7 +1928,7 @@ const persistProjectPreferences = useCallback(
           console.error('API Error:', errorText);
 
           if (tempUserMessageId) {
-            console.log('🔄 [Optimistic] Removing optimistic user message due to API error via stable handler:', tempUserMessageId);
+            console.debug('🔄 [Optimistic] Removing optimistic user message due to API error via stable handler:', tempUserMessageId);
             if (stableMessageHandlers.current) {
               stableMessageHandlers.current.remove(tempUserMessageId);
             } else if (messageHandlersRef.current) {
@@ -1943,7 +1943,7 @@ const persistProjectPreferences = useCallback(
         clearTimeout(timeoutId);
         if (fetchError.name === 'AbortError') {
           if (tempUserMessageId) {
-            console.log('🔄 [Optimistic] Removing optimistic user message due to timeout via stable handler:', tempUserMessageId);
+            console.debug('🔄 [Optimistic] Removing optimistic user message due to timeout via stable handler:', tempUserMessageId);
             if (stableMessageHandlers.current) {
               stableMessageHandlers.current.remove(tempUserMessageId);
             } else if (messageHandlersRef.current) {
@@ -1959,7 +1959,7 @@ const persistProjectPreferences = useCallback(
 
       const result = await r.json();
 
-      console.log('📸 Act API response received:', {
+      console.debug('📸 Act API response received:', {
         success: result.success,
         userMessageId: result.userMessageId,
         conversationId: result.conversationId,
@@ -2009,7 +2009,7 @@ const persistProjectPreferences = useCallback(
       console.error('Act execution error:', error);
 
       if (tempUserMessageId) {
-        console.log('🔄 [Optimistic] Removing optimistic user message due to execution error via stable handler:', tempUserMessageId);
+        console.debug('🔄 [Optimistic] Removing optimistic user message due to execution error via stable handler:', tempUserMessageId);
         if (stableMessageHandlers.current) {
           stableMessageHandlers.current.remove(tempUserMessageId);
         } else if (messageHandlersRef.current) {
@@ -2102,9 +2102,9 @@ const persistProjectPreferences = useCallback(
   useEffect(() => {
     if (!hasActiveRequests && !previewUrl && !isStartingPreview) {
       if (!previousActiveState.current) {
-        console.log('🔄 Preview not running; auto-starting');
+        console.debug('🔄 Preview not running; auto-starting');
       } else {
-        console.log('✅ Task completed, ensuring preview server is running');
+        console.debug('✅ Task completed, ensuring preview server is running');
       }
       start();
     }
@@ -2302,18 +2302,18 @@ const persistProjectPreferences = useCallback(
                 <ChatLog
                   projectId={projectId}
                   onAddUserMessage={(handlers) => {
-                    console.log('🔄 [HandlerSetup] ChatLog provided new handlers, updating references');
+                    console.debug('🔄 [HandlerSetup] ChatLog provided new handlers, updating references');
                     messageHandlersRef.current = handlers;
 
                     // Also update stable handlers if they exist
                     if (stableMessageHandlers.current) {
-                      console.log('🔄 [HandlerSetup] Updating stable handlers reference');
+                      console.debug('🔄 [HandlerSetup] Updating stable handlers reference');
                       // Note: stableMessageHandlers.current already has its own add/remove logic
                       // We don't replace it completely, just keep the reference to handlers
                     }
                   }}
                   onSessionStatusChange={(isRunningValue) => {
-                  console.log('🔍 [DEBUG] Session status change:', isRunningValue);
+                  console.debug('🔍 [DEBUG] Session status change:', isRunningValue);
                   setIsRunning(isRunningValue);
                   // Track agent task completion and auto-start preview
                   if (!isRunningValue && hasInitialPrompt && !agentWorkComplete && !previewUrl) {
@@ -2325,7 +2325,7 @@ const persistProjectPreferences = useCallback(
                   }
                 }}
                 onSseFallbackActive={(active) => {
-                  console.log('🔄 [SSE] Fallback status:', active);
+                  console.debug('🔄 [SSE] Fallback status:', active);
                   setIsSseFallbackActive(active);
                 }}
                 onProjectStatusUpdate={handleProjectStatusUpdate}
@@ -2583,12 +2583,12 @@ const persistProjectPreferences = useCallback(
                           <button
                             disabled={publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected}
                             onClick={async () => {
-                              console.log('🚀 Publish started');
+                              console.debug('🚀 Publish started');
                               
                               setPublishLoading(true);
                               try {
                                 // Push to GitHub
-                                console.log('🚀 Pushing to GitHub...');
+                                console.debug('🚀 Pushing to GitHub...');
                                 const pushRes = await fetch(`${API_BASE}/api/projects/${projectId}/github/push`, { method: 'POST' });
                                 if (!pushRes.ok) {
                                   const errorText = await pushRes.text();
@@ -2597,7 +2597,7 @@ const persistProjectPreferences = useCallback(
                                 }
                                 
                                 // Deploy to Vercel
-                                console.log('🚀 Deploying to Vercel...');
+                                console.debug('🚀 Deploying to Vercel...');
                                 const deployUrl = `${API_BASE}/api/projects/${projectId}/vercel/deploy`;
                                 
                                 const vercelRes = await fetch(deployUrl, {
@@ -2609,7 +2609,7 @@ const persistProjectPreferences = useCallback(
                                 }
                                 if (vercelRes.ok) {
                                   const data = await vercelRes.json();
-                                  console.log('🚀 Deployment started, polling for status...');
+                                  console.debug('🚀 Deployment started, polling for status...');
                                   
                                   // Set deploying status BEFORE ending publishLoading to prevent gap
                                   setDeploymentStatus('deploying');

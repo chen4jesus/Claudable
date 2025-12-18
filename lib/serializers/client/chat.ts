@@ -70,7 +70,7 @@ const deriveMessageId = (raw: any): string => {
 };
 
 const normalizeMetadata = (raw: unknown): MessageMetadata | null => {
-  console.log('[normalizeMetadata] Processing raw metadata:', {
+  console.debug('[normalizeMetadata] Processing raw metadata:', {
     rawType: typeof raw,
     isNull: raw == null,
     rawLength: typeof raw === 'string' ? raw.length : undefined,
@@ -79,13 +79,13 @@ const normalizeMetadata = (raw: unknown): MessageMetadata | null => {
   });
 
   if (raw == null) {
-    console.log('[normalizeMetadata] Returning null for null/undefined metadata');
+    console.debug('[normalizeMetadata] Returning null for null/undefined metadata');
     return null;
   }
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      console.log('[normalizeMetadata] Successfully parsed JSON string, recursing:', {
+      console.debug('[normalizeMetadata] Successfully parsed JSON string, recursing:', {
         parsedKeys: typeof parsed === 'object' && parsed !== null ? Object.keys(parsed) : undefined,
         parsedType: typeof parsed
       });
@@ -96,14 +96,14 @@ const normalizeMetadata = (raw: unknown): MessageMetadata | null => {
     }
   }
   if (typeof raw === 'object') {
-    console.log('[normalizeMetadata] Returning object as metadata:', {
+    console.debug('[normalizeMetadata] Returning object as metadata:', {
       objectKeys: Object.keys(raw),
       hasAttachments: raw && typeof raw === 'object' && (raw as any).attachments ? true : false,
       attachmentsCount: raw && typeof raw === 'object' && (raw as any).attachments ? Array.isArray((raw as any).attachments) ? (raw as any).attachments.length : 'not array' : false
     });
     return raw as MessageMetadata;
   }
-  console.log('[normalizeMetadata] Returning null for unsupported type:', typeof raw);
+  console.debug('[normalizeMetadata] Returning null for unsupported type:', typeof raw);
   return null;
 };
 

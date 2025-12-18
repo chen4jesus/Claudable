@@ -78,7 +78,7 @@ export default function ServiceConnectionModal({
         setToken('');
         setShowTokenInput(false);
         // Use a more elegant notification instead of alert
-        console.log('Token saved successfully!');
+        console.debug('Token saved successfully!');
       } else {
         const error = await response.text();
         alert(`Failed to save token: ${error}`);

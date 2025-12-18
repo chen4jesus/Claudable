@@ -28,7 +28,7 @@ function getDatasources() {
     const normalizedPath = dbPath.split(path.sep).join('/');
     const absoluteUrl = `file:${normalizedPath}`;
     
-    console.log(`[Prisma] Normalized DATABASE_URL: ${url} -> ${absoluteUrl}`);
+    console.debug(`[Prisma] Normalized DATABASE_URL: ${url} -> ${absoluteUrl}`);
     return {
       db: {
         url: absoluteUrl,
