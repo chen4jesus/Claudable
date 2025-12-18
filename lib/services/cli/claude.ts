@@ -720,15 +720,6 @@ export async function executeClaude(
     // Send ready notification via SSE
     publishStatus('ready', 'Project verified. Starting AI...');
 
-    // Environment variables to allow bypassPermissions even as root/admin.
-    // We set these both globally and pass them into the SDK explicitly.
-    const allowRootEnv = {
-      CLAUDE_CODE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS_WITH_ROOT: '1',
-      CLAUDE_CODE_ALLOW_ROOT: '1',
-    };
-
-    Object.assign(process.env, allowRootEnv);
-
     // Start Claude Agent SDK query
     console.log(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
     console.log(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
@@ -752,10 +743,6 @@ export async function executeClaude(
           stderrBuffer.push(line);
           // Also mirror to server logs for live debugging
           console.error(`[ClaudeSDK][stderr] ${line}`);
-        },
-        env: {
-          ...process.env,
-          ...allowRootEnv,
         },
       } as any,
     });
