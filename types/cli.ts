@@ -3,6 +3,7 @@ import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 import { CURSOR_MODEL_DEFINITIONS } from '@/lib/constants/cursorModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
+import { GEMINI_MODEL_DEFINITIONS } from '@/lib/constants/geminiModels';
 
 /**
  * Frontend CLI Type Definitions (claude-only variant)
@@ -146,6 +147,26 @@ export const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'zai devpack install claude',
     features: ['Claude-compatible agent runtime', 'GLM 4.6 reasoning'],
     models: GLM_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    description: 'Google Gemini AI coding assistant with advanced reasoning',
+    icon: '/gemini.png',
+    available: true,
+    configured: true,
+    enabled: true,
+    color: 'from-blue-400 to-purple-600',
+    brandColor: '#4285F4',
+    downloadUrl: 'https://github.com/google-gemini/gemini-cli',
+    installCommand: 'npm install -g @google/gemini-cli',
+    features: ['Autonomous agent', 'Multi-modal support', 'Code generation'],
+    models: GEMINI_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,

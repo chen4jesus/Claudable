@@ -9,7 +9,7 @@ import type { BaseProject, TemplateType } from '../shared/project';
  */
 export interface ServerProject extends BaseProject {
   repoPath?: string | null;
-  templateType?: TemplateType;
+  templateType: TemplateType;
   activeClaudeSessionId?: string | null;
   activeCursorSessionId?: string | null;
   settings?: string; // JSON string
@@ -28,6 +28,7 @@ export interface CreateProjectInput {
   preferredCli?: string;
   selectedModel?: string;
   description?: string;
+  templateType?: TemplateType;
 }
 
 /**

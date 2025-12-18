@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       preferredCli,
       selectedModel: normalizeModelId(preferredCli, requestedModel ?? getDefaultModelForCli(preferredCli)),
       description: body.description,
+      templateType: body.templateType || body.template_type || 'nextjs',
     };
 
     // Validation

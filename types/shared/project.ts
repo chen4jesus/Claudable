@@ -20,7 +20,7 @@ export type ProjectStatus =
   | 'active'
   | 'failed';
 
-export type TemplateType = 'nextjs' | 'react' | 'vue' | 'custom';
+export type TemplateType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask';
 
 /**
  * Service Connection Status
@@ -46,6 +46,7 @@ export interface BaseProject {
   initialPrompt?: string | null;
   preferredCli?: CLIType | null;
   selectedModel?: string | null;
+  templateType?: TemplateType | null;
   fallbackEnabled: boolean;
 }
 

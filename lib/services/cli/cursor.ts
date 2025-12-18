@@ -514,6 +514,7 @@ export async function initializeNextJsProject(
   initialPrompt: string,
   model: string = CURSOR_DEFAULT_MODEL,
   requestId?: string,
+  _projectType?: string,
 ): Promise<void> {
   const fullPrompt = `
 Create a new Next.js application with the following requirements:
@@ -539,6 +540,7 @@ export async function applyChanges(
   model: string = CURSOR_DEFAULT_MODEL,
   sessionId?: string | null,
   requestId?: string,
+  _projectType?: string,
 ): Promise<void> {
   await executeCursor(
     projectId,

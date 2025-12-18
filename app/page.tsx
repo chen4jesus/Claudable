@@ -478,6 +478,20 @@ export default function HomePage() {
     const projectId = `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     try {
+      // Smart project type detection based on prompt keywords
+      const lowerPrompt = prompt.toLowerCase();
+      let detectedTemplateType = 'nextjs'; // default
+      
+      if (lowerPrompt.includes('flask') || lowerPrompt.includes('python') || lowerPrompt.includes('pip ')) {
+        detectedTemplateType = 'flask';
+      } else if (lowerPrompt.includes('vue')) {
+        detectedTemplateType = 'vue';
+      } else if (lowerPrompt.includes('static html') || lowerPrompt.includes('plain html') || lowerPrompt.includes('vanilla js') || lowerPrompt.includes('no framework')) {
+        detectedTemplateType = 'static-html';
+      } else if ((lowerPrompt.includes('react') && !lowerPrompt.includes('next')) || lowerPrompt.includes('vite') || lowerPrompt.includes('create-react-app')) {
+        detectedTemplateType = 'react';
+      }
+      
       // Create a new project first
       const response = await fetchAPI(`${API_BASE}/api/projects`, {
         method: 'POST',
@@ -487,7 +501,8 @@ export default function HomePage() {
           name: prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
           initialPrompt: prompt.trim(),
           preferredCli: selectedAssistant,
-          selectedModel
+          selectedModel,
+          templateType: detectedTemplateType
         })
       });
       
@@ -921,11 +936,11 @@ export default function HomePage() {
                     lineHeight: '72px'
                   }}
                 >
-                  Claudable
+                  Build Faithfully
                 </h1>
               </div>
               <p className="text-xl text-gray-700 font-light tracking-tight">
-                Connect CLI Agent • Build what you want • Deploy instantly
+                Build From Faith • Build With Faith • Build For Faith
               </p>
             </div>
             
@@ -972,7 +987,7 @@ export default function HomePage() {
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Ask Claudable to create a blog about..."
+                  placeholder="Ask Faithful to create a blog about..."
                   disabled={isCreatingProject}
                   className="flex w-full rounded-md px-2 py-2 placeholder:text-gray-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent focus:bg-transparent flex-1 text-gray-900 overflow-y-auto"
                   style={{ height: '120px' }}
@@ -1145,23 +1160,23 @@ export default function HomePage() {
             <div className="flex flex-wrap gap-2 justify-center mt-8">
               {[
                 { 
-                  text: 'Landing Page',
+                  text: 'Church Website',
                   prompt: 'Design a modern, elegant, and visually stunning landing page for claudable with a clean, minimalistic aesthetic and a strong focus on user experience and conversion. Use a harmonious color palette, smooth gradients, soft shadows, and subtle animations to create a premium feel. Include a bold hero section with a clear headline and CTA, feature highlights with simple icons, social proof like testimonials or logos, and a final call-to-action at the bottom. Use large, impactful typography, balanced white space, and a responsive grid-based layout for a polished, pixel-perfect design optimized for both desktop and mobile.'
                 },
                 { 
-                  text: 'Gaming Platform',
+                  text: 'Church Membership Platform',
                   prompt: 'Design a modern, clean, and visually engaging game platform UI for Lunaris Play, focusing on simplicity, usability, and an immersive user experience. Use a minimalistic yet dynamic aesthetic with smooth gradients, soft shadows, and subtle animations to create a premium, gamer-friendly vibe. Include a hero section highlighting trending and featured games, a game catalog grid with attractive thumbnails, quick-access filter and search options, and a user dashboard for profile, achievements, and recent activity. Typography should be bold yet clean, the layout responsive and intuitive, and the overall design polished, pixel-perfect, and optimized for both desktop and mobile.'
                 },
                 { 
-                  text: 'Onboarding Portal',
+                  text: 'Gospel Resources App',
                   prompt: 'Design a modern, intuitive, and visually appealing onboarding portal for new users, focusing on simplicity, clarity, and a smooth step-by-step experience. Use a clean layout with soft gradients, subtle shadows, and minimalistic icons to guide users through the process. Include a welcome hero section, an interactive progress tracker, and easy-to-follow forms. Typography should be bold yet friendly, and the overall design must feel welcoming, polished, and optimized for both desktop and mobile.'
                 },
                 { 
-                  text: 'Networking App',
+                  text: 'Devotional App',
                   prompt: 'Design a sleek, modern, and user-friendly networking app interface for professionals to connect, chat, and collaborate. Use a vibrant yet minimal aesthetic with smooth animations, clean typography, and an elegant color palette to create an engaging social experience. Include a profile showcase, smart connection recommendations, real-time messaging, and a personalized activity feed. The layout should be intuitive, responsive, and optimized for seamless interaction across devices.'
                 },
                 { 
-                  text: 'Room Visualizer',
+                  text: 'Christian Network App',
                   prompt: 'Design a modern, immersive, and highly interactive room visualizer platform where users can preview furniture and decor in a 3D virtual environment. Use a clean, minimal design with elegant gradients, realistic visuals, and smooth transitions for a premium feel. Include a drag-and-drop furniture catalog, real-time 3D previews, color and style customization tools, and an intuitive save-and-share feature. Ensure the interface feels intuitive, responsive, and optimized for desktop and mobile experiences.'
                 }
               ].map((example) => (

@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionP } from '@/lib/motion';
 import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
+import { PROJECT_TYPE_OPTIONS, type ProjectType } from '@/lib/constants/projectTypes';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
 
@@ -98,6 +99,22 @@ const CLI_OPTIONS: CLIOption[] = [
     })),
     features: ['Claude-compatible runtime', 'GLM 4.6 reasoning', 'Text-only mode'],
   },
+  {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    icon: '💎',
+    description: 'Google Gemini AI coding assistant with advanced reasoning',
+    color: 'from-blue-400 to-purple-600',
+    downloadUrl: 'https://github.com/google-gemini/gemini-cli',
+    installCommand: 'npm install -g @google/gemini-cli',
+    models: getModelDefinitionsForCli('gemini').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Autonomous agent', 'Multi-modal support', 'Code generation'],
+  },
 ];
 
 function generateUUID() {
@@ -137,7 +154,55 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   const [showWebsiteInput, setShowWebsiteInput] = useState(false);
   const [showCLIDropdown, setShowCLIDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [selectedProjectType, setSelectedProjectType] = useState<ProjectType>('nextjs');
+  const [showProjectTypeDropdown, setShowProjectTypeDropdown] = useState(false);
   const router = useRouter();
+  
+  // Track if user has manually selected a type to avoid auto-switching
+  const hasManuallySelectedType = useRef(false);
+
+  // Smart Project Type Detection
+  useEffect(() => {
+    // If user has manually selected a type, don't override it
+    if (hasManuallySelectedType.current) return;
+
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // Flask / Python
+    if (lowerPrompt.includes('flask') || lowerPrompt.includes('python') || lowerPrompt.includes('pip ')) {
+      if (selectedProjectType !== 'flask') setSelectedProjectType('flask');
+      return;
+    }
+
+    // Vue
+    if (lowerPrompt.includes('vue')) {
+      if (selectedProjectType !== 'vue') setSelectedProjectType('vue');
+      return;
+    }
+
+    // Static HTML
+    if (lowerPrompt.includes('static html') || lowerPrompt.includes('plain html') || lowerPrompt.includes('vanilla js') || lowerPrompt.includes('no framework')) {
+      if (selectedProjectType !== 'static-html') setSelectedProjectType('static-html');
+      return;
+    }
+
+    // React (without Next.js context)
+    // Be careful here as Next.js IS React. Only switch if specific React emphasis or Vite mention.
+    if ((lowerPrompt.includes('react') && !lowerPrompt.includes('next')) || lowerPrompt.includes('vite') || lowerPrompt.includes('create-react-app')) {
+      if (selectedProjectType !== 'react') setSelectedProjectType('react');
+      return;
+    }
+
+    // Default back to Next.js if no specific keywords and current is something else derived? 
+    // Actually, stick to Next.js as default.
+  }, [prompt, selectedProjectType]);
+
+  // Reset manual selection tracking when modal opens
+  useEffect(() => {
+    if (open) {
+      hasManuallySelectedType.current = false;
+    }
+  }, [open]);
 
   const loadGlobalSettings = useCallback(async () => {
     try {
@@ -343,6 +408,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       setSelectedModel(DEFAULT_MODEL_ID);
       setFallbackEnabled(true);
     }
+    setSelectedProjectType('nextjs');
+    hasManuallySelectedType.current = false;
     
     // Close modal and navigate to chat with initial prompt
     onClose();
@@ -428,6 +495,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         preferredCli: finalCLI,
         fallbackEnabled,
         selectedModel: finalModel,
+        templateType: selectedProjectType,
         cli_settings: {
           [finalCLI]: {
             model: finalModel
@@ -703,6 +771,82 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               </MotionDiv>
             )}
           </AnimatePresence>
+
+          {/* Project Type Selection */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Project Type
+            </label>
+            <div className="relative">
+              <button
+                onClick={() => setShowProjectTypeDropdown(!showProjectTypeDropdown)}
+                className="w-full p-3 bg-white border border-gray-200 rounded-lg text-left flex items-center justify-between hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">
+                    {selectedProjectType === 'static-html' ? '📄' : 
+                     selectedProjectType === 'react' ? '⚛️' : 
+                     selectedProjectType === 'vue' ? '💚' : 
+                     selectedProjectType === 'custom' ? '🛠️' : 
+                     selectedProjectType === 'flask' ? '🌶️' : '▲'}
+                  </span>
+                  <div>
+                    <div className="font-medium text-gray-900">
+                      {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.name || 'Next.js'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.description || 'Full-stack React framework'}
+                    </div>
+                  </div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${showProjectTypeDropdown ? 'rotate-180' : ''}`}>
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+
+              <AnimatePresence>
+                {showProjectTypeDropdown && (
+                  <MotionDiv
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 overflow-hidden"
+                  >
+                    {PROJECT_TYPE_OPTIONS.map((type) => (
+                      <button
+                        key={type.id}
+                        onClick={() => {
+                          setSelectedProjectType(type.id);
+                          hasManuallySelectedType.current = true;
+                          setShowProjectTypeDropdown(false);
+                        }}
+                        className={`w-full p-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 last:border-b-0 ${
+                          selectedProjectType === type.id ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <span className="text-lg">
+                          {type.id === 'static-html' ? '📄' : 
+                           type.id === 'react' ? '⚛️' : 
+                           type.id === 'vue' ? '💚' : 
+                           type.id === 'custom' ? '🛠️' : 
+                           type.id === 'flask' ? '🌶️' : '▲'}
+                        </span>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">{type.name}</div>
+                          <div className="text-xs text-gray-500">{type.description}</div>
+                        </div>
+                        {selectedProjectType === type.id && (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-blue-600">
+                            <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </MotionDiv>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
 
           {/* AI Configuration */}
           <div className="space-y-4 mb-6">

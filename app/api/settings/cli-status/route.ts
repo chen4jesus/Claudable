@@ -11,6 +11,7 @@ import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
 import { CURSOR_MODEL_DEFINITIONS } from '@/lib/constants/cursorModels';
+import { GEMINI_MODEL_DEFINITIONS } from '@/lib/constants/geminiModels';
 
 const execAsync = promisify(exec);
 
@@ -101,6 +102,27 @@ async function checkQwenCLI(): Promise<{
   }
 }
 
+async function checkGeminiCLI(): Promise<{
+  installed: boolean;
+  version?: string;
+  error?: string;
+}> {
+  const executable = process.platform === 'win32' ? 'gemini.cmd' : 'gemini';
+  try {
+    const { stdout } = await execAsync(`${executable} --version`);
+    const version = stdout.trim();
+    return {
+      installed: true,
+      version: version || 'installed',
+    };
+  } catch (error) {
+    return {
+      installed: false,
+      error: error instanceof Error ? error.message : 'Failed to check Gemini CLI',
+    };
+  }
+}
+
 /**
  * GET /api/settings/cli-status
  * Check CLI installation status
@@ -168,6 +190,15 @@ export async function GET() {
       checking: false,
       error: qwenStatus.error,
       models: QWEN_MODEL_DEFINITIONS.map((model) => model.id),
+    };
+
+    const geminiStatus = await checkGeminiCLI();
+    status.gemini = {
+      installed: geminiStatus.installed,
+      version: geminiStatus.version,
+      checking: false,
+      error: geminiStatus.error,
+      models: GEMINI_MODEL_DEFINITIONS.map((model) => model.id),
     };
 
     const glmStatus = claudeStatus;

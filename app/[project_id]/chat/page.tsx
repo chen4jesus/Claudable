@@ -13,6 +13,11 @@ import ChatInput from '@/components/chat/ChatInput';
 import { ChatErrorBoundary } from '@/components/ErrorBoundary';
 import { useUserRequests } from '@/hooks/useUserRequests';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
+import { v4 as uuidv4 } from 'uuid';
+
+import { AiSmartEditToolbar } from '@/components/AiSmartEditToolbar';
+import { SmartEditModal } from '@/components/modals/SmartEditModal';
+import { ElementContext } from '@/types/smart-edit';
 import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import {
   ACTIVE_CLI_BRAND_COLORS,
@@ -210,6 +215,11 @@ export default function ChatPage() {
   const [content, setContent] = useState<string>('');
   const [editedContent, setEditedContent] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Smart Edit State
+  const [isSmartEditModalOpen, setIsSmartEditModalOpen] = useState(false);
+  const [selectedElementContext, setSelectedElementContext] = useState<ElementContext | null>(null);
+
   const [isSavingFile, setIsSavingFile] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -574,12 +584,12 @@ const persistProjectPreferences = useCallback(
     if (!modelOptions.length) return;
     const hasSelected = modelOptions.some(option => option.cli === preferredCli && option.id === selectedModel);
     if (!hasSelected) {
+      // Only fallback to models within the same CLI
       const fallbackOption = modelOptions.find(option => option.cli === preferredCli && option.available)
-        || modelOptions.find(option => option.cli === preferredCli)
-        || modelOptions.find(option => option.available)
-        || modelOptions[0];
+        || modelOptions.find(option => option.cli === preferredCli);
+      // Only change if we found a valid option for this specific CLI
       if (fallbackOption) {
-        void handleModelChange(fallbackOption);
+        void handleModelChange(fallbackOption, { skipCliUpdate: true });
       }
     }
   }, [modelOptions, preferredCli, selectedModel, handleModelChange]);
@@ -794,6 +804,27 @@ const persistProjectPreferences = useCallback(
       setTimeout(() => setIsStartingPreview(false), 2000);
     }
   }, [projectId]);
+
+  const handleSmartEditSelection = useCallback((context: ElementContext) => {
+    setSelectedElementContext(context);
+    setIsSmartEditModalOpen(true);
+  }, []);
+
+  // No useCallback to ensure access to current runAct/state
+  const handleSmartEditSubmit = (promptText: string, context: ElementContext) => {
+    const formattedMessage = `User Instructions:\n${promptText}\n\nContext:\n${context.html || context.innerText}`;
+    
+    // Update local prompt state first (optional, but good for visibility if runAct fails or acts async)
+    setPrompt(formattedMessage);
+    
+    // Trigger the chatbot action directly
+    // This uses the current scope's runAct and state
+    runAct(formattedMessage);
+    
+    // Close modal
+    setIsSmartEditModalOpen(false);
+  };
+
 
   // Navigate to specific route in iframe
   const navigateToRoute = (route: string) => {
@@ -1708,7 +1739,7 @@ const persistProjectPreferences = useCallback(
     }
 
     setIsRunning(true);
-    const requestId = crypto.randomUUID();
+    const requestId = uuidv4();
     let tempUserMessageId: string | null = null;
 
     // Add to pending requests
@@ -1736,7 +1767,7 @@ const persistProjectPreferences = useCallback(
           return 'png';
         })();
 
-        const inferredName = img.name && img.name.trim().length > 0 ? img.name.trim() : `image-${crypto.randomUUID()}.${extension}`;
+        const inferredName = img.name && img.name.trim().length > 0 ? img.name.trim() : `image-${uuidv4()}.${extension}`;
         const hasExtension = /\.[a-zA-Z0-9]+$/.test(inferredName);
         const filename = hasExtension ? inferredName : `${inferredName}.${extension}`;
 
@@ -2312,7 +2343,7 @@ const persistProjectPreferences = useCallback(
                   runAct(message, images);
                 }}
                 disabled={isRunning}
-                placeholder={mode === 'act' ? "Ask Claudable..." : "Chat with Claudable..."}
+                placeholder={mode === 'act' ? "Ask Faithful..." : "Chat with Faithful..."}
                 mode={mode}
                 onModeChange={setMode}
                 projectId={projectId}
@@ -3254,6 +3285,19 @@ const persistProjectPreferences = useCallback(
           setProjectName(name);
           setProjectDescription(description ?? '');
         }}
+      />
+      
+      <AiSmartEditToolbar 
+        targetIframeRef={iframeRef} 
+        onElementSelected={handleSmartEditSelection} 
+        projectId={projectId}
+      />
+
+      <SmartEditModal
+        isOpen={isSmartEditModalOpen}
+        onClose={() => setIsSmartEditModalOpen(false)}
+        elementContext={selectedElementContext}
+        onSubmit={handleSmartEditSubmit}
       />
     </>
   );

@@ -347,3 +347,198 @@ function resolvePort(preferredPort) {
 `
   );
 }
+
+export async function scaffoldStaticHtmlApp(
+  projectPath: string,
+  projectId: string
+) {
+  await fs.mkdir(projectPath, { recursive: true });
+
+  const packageJson = {
+    name: projectId,
+    private: true,
+    version: '0.1.0',
+    scripts: {
+      dev: 'node scripts/serve.js',
+    },
+    devDependencies: {
+      serve: '^14.2.0',
+    },
+  };
+
+  await writeFileIfMissing(
+    path.join(projectPath, 'package.json'),
+    `${JSON.stringify(packageJson, null, 2)}\n`
+  );
+
+  await writeFileIfMissing(
+    path.join(projectPath, 'index.html'),
+    `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Static Site</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main>
+        <h1>Hello World</h1>
+        <p>Edit index.html to get started.</p>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>
+`
+  );
+
+  await writeFileIfMissing(
+    path.join(projectPath, 'styles.css'),
+    `body {
+    font-family: system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    line-height: 1.5;
+}
+
+h1 {
+    color: #333;
+}
+`
+  );
+
+  await writeFileIfMissing(
+    path.join(projectPath, 'script.js'),
+    `console.log('Script loaded!');
+`
+  );
+
+  // Universal serve script that detects build outputs and respects PORT
+  await writeFileIfMissing(
+    path.join(projectPath, 'scripts/serve.js'),
+    `#!/usr/bin/env node
+
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const projectRoot = path.join(__dirname, '..');
+const isWindows = process.platform === 'win32';
+
+// Simple port resolution logic
+const port = process.env.PORT || 3000;
+
+// Universal detection: Check common build output directories
+// We look for 'index.html' as a strong signal of a build output
+const candidates = ['dist', 'build', 'out', 'public'];
+let serveTarget = '.';
+
+// 1. Try to find a folder with index.html
+for (const dir of candidates) {
+  const fullPath = path.join(projectRoot, dir);
+  if (fs.existsSync(fullPath) && fs.existsSync(path.join(fullPath, 'index.html'))) {
+    serveTarget = dir;
+    break;
+  }
+}
+
+// 2. Fallback: If still root, but 'public' exists (even without index.html), prefer public
+// This handles cases where index.html might be missing but assets are in public
+if (serveTarget === '.' && fs.existsSync(path.join(projectRoot, 'public'))) {
+    serveTarget = 'public';
+}
+
+console.log(\`🚀 Starting static file server on port \${port}\`);
+console.log(\`📂 Serving directory: \${serveTarget}\`);
+
+const child = spawn(
+  'npx',
+  ['serve', '-s', serveTarget, '-p', String(port)],
+  {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    shell: isWindows,
+    env: {
+      ...process.env,
+      PORT: String(port)
+    },
+  }
+);
+
+child.on('exit', (code) => {
+  if (code !== 0) {
+    console.error(\`❌ Server exited with code \${code}\`);
+    process.exit(code || 1);
+  }
+});
+`
+  );
+}
+
+export async function scaffoldFlaskApp(
+  projectPath: string,
+  projectId: string
+) {
+  await fs.mkdir(projectPath, { recursive: true });
+
+  // 1. Create app.py
+  await writeFileIfMissing(
+    path.join(projectPath, 'app.py'),
+    `from flask import Flask, render_template
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return render_template('index.html', title='Flask App')
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 3000))
+    app.run(host='0.0.0.0', port=port)
+`
+  );
+
+  // 2. Create requirements.txt
+  await writeFileIfMissing(
+    path.join(projectPath, 'requirements.txt'),
+    `flask`
+  );
+
+  // 3. Create templates directory and index.html
+  const templatesDir = path.join(projectPath, 'templates');
+  await fs.mkdir(templatesDir, { recursive: true });
+
+  await writeFileIfMissing(
+    path.join(templatesDir, 'index.html'),
+    `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>Hello from Flask!</h1>
+    <p>This is a dynamic Python app serving templates.</p>
+</body>
+</html>
+`
+  );
+  
+  // 4. Create .gitignore
+  await writeFileIfMissing(
+    path.join(projectPath, '.gitignore'),
+    `__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.DS_Store
+`
+  );
+}

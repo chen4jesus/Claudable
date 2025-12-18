@@ -3,6 +3,7 @@ import { CODEX_DEFAULT_MODEL, CODEX_MODEL_DEFINITIONS, getCodexModelDisplayName,
 import { CURSOR_DEFAULT_MODEL, CURSOR_MODEL_DEFINITIONS, getCursorModelDisplayName, normalizeCursorModelId } from './cursorModels';
 import { QWEN_DEFAULT_MODEL, QWEN_MODEL_DEFINITIONS, getQwenModelDisplayName, normalizeQwenModelId } from './qwenModels';
 import { GLM_DEFAULT_MODEL, GLM_MODEL_DEFINITIONS, getGLMModelDisplayName, normalizeGLMModelId } from './glmModels';
+import { GEMINI_DEFAULT_MODEL, GEMINI_MODEL_DEFINITIONS, getGeminiModelDisplayName, normalizeGeminiModelId } from './geminiModels';
 import type { CLAUDE_MODEL_DEFINITIONS as _Guard } from './claudeModels'; // Ensure module side effects preserved
 
 type CLIKey = 'claude' | 'codex' | 'cursor' | 'gemini' | 'qwen' | 'glm';
@@ -18,7 +19,7 @@ const DEFAULT_MODELS: Record<CLIKey, string> = {
   claude: CLAUDE_DEFAULT_MODEL,
   codex: CODEX_DEFAULT_MODEL,
   cursor: CURSOR_DEFAULT_MODEL,
-  gemini: 'gemini-2.5-pro',
+  gemini: GEMINI_DEFAULT_MODEL,
   qwen: QWEN_DEFAULT_MODEL,
   glm: GLM_DEFAULT_MODEL,
 };
@@ -27,13 +28,11 @@ const MODEL_DEFINITIONS: Record<CLIKey, ModelDefinition[]> = {
   claude: CLAUDE_MODEL_DEFINITIONS,
   codex: CODEX_MODEL_DEFINITIONS,
   cursor: CURSOR_MODEL_DEFINITIONS,
-  gemini: [
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  ],
+  gemini: GEMINI_MODEL_DEFINITIONS,
   qwen: QWEN_MODEL_DEFINITIONS,
   glm: GLM_MODEL_DEFINITIONS,
 };
+
 
 export function getDefaultModelForCli(cli: string | null | undefined): string {
   if (!cli) {
@@ -56,6 +55,8 @@ export function normalizeModelId(cli: string | null | undefined, model?: string 
       return normalizeQwenModelId(model);
     case 'glm':
       return normalizeGLMModelId(model);
+    case 'gemini':
+      return normalizeGeminiModelId(model);
     case 'claude':
     default:
       return normalizeClaudeModelId(model);
@@ -76,6 +77,8 @@ export function getModelDisplayName(cli: string | null | undefined, modelId?: st
       return getQwenModelDisplayName(modelId);
     case 'glm':
       return getGLMModelDisplayName(modelId);
+    case 'gemini':
+      return getGeminiModelDisplayName(modelId);
     case 'claude':
     default:
       return getClaudeModelDisplayName(normalizeClaudeModelId(modelId));

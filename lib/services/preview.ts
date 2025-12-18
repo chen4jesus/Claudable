@@ -5,15 +5,26 @@
 import { spawn, type ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
+import os from 'os';
 import { findAvailablePort } from '@/lib/utils/ports';
 import { getProjectById, updateProject, updateProjectStatus } from './project';
-import { scaffoldBasicNextApp } from '@/lib/utils/scaffold';
+import { scaffoldBasicNextApp, scaffoldStaticHtmlApp, scaffoldFlaskApp } from '@/lib/utils/scaffold';
 import { PREVIEW_CONFIG } from '@/lib/config/constants';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const yarnCommand = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
 const bunCommand = process.platform === 'win32' ? 'bun.exe' : 'bun';
+
+// Piper command options - try specific binaries first, then module execution
+const pipOptions = process.platform === 'win32' 
+  ? [{ cmd: 'pip', args: [] }, { cmd: 'python', args: ['-m', 'pip'] }]
+  : [
+      { cmd: 'pip3', args: [] }, 
+      { cmd: 'pip', args: [] }, 
+      { cmd: 'python3', args: ['-m', 'pip'] }, 
+      { cmd: 'python', args: ['-m', 'pip'] }
+    ];
 
 type PackageManagerId = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
@@ -107,6 +118,18 @@ interface EnvOverrides {
 
 function stripQuotes(value: string): string {
   return value.replace(/^['"]|['"]$/g, '').trim();
+}
+
+function getLocalIpAddress(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
 }
 
 function parsePort(value?: string): number | null {
@@ -309,7 +332,12 @@ async function runInstallWithPreferredManager(
   }
 }
 
-async function isLikelyNextProject(dirPath: string): Promise<boolean> {
+async function isLikelyProjectRoot(dirPath: string): Promise<boolean> {
+  // Check for index.html (Static HTML projects)
+  if (await fileExists(path.join(dirPath, 'index.html'))) {
+    return true;
+  }
+
   const pkgPath = path.join(dirPath, 'package.json');
   try {
     const pkgRaw = await fs.readFile(pkgPath, 'utf8');
@@ -404,6 +432,9 @@ async function ensureProjectRootStructure(
   }
 
   const candidateDirs: { name: string; path: string }[] = [];
+  // Flask convention directories - these should not be considered as separate projects
+  const flaskConventionDirs = ['templates', 'static', 'admin', 'blueprints', 'views', 'models', 'forms', 'utils', 'migrations'];
+  
   for (const entry of entries) {
     if (!entry.isDirectory()) {
       continue;
@@ -411,9 +442,13 @@ async function ensureProjectRootStructure(
     if (entry.name === 'node_modules') {
       continue;
     }
+    // Skip Flask convention directories
+    if (flaskConventionDirs.includes(entry.name.toLowerCase())) {
+      continue;
+    }
     const dirPath = path.join(projectPath, entry.name);
     // quick skip for empty directory
-    const isCandidate = await isLikelyNextProject(dirPath);
+    const isCandidate = await isLikelyProjectRoot(dirPath);
     if (isCandidate) {
       candidateDirs.push({ name: entry.name, path: dirPath });
     }
@@ -426,7 +461,7 @@ async function ensureProjectRootStructure(
   if (candidateDirs.length > 1) {
     const dirNames = candidateDirs.map((dir) => dir.name).join(', ');
     throw new Error(
-      `Multiple potential Next.js projects detected in subdirectories (${dirNames}). Please move the desired project files to the project root.`
+      `Multiple potential projects detected in subdirectories (${dirNames}). Please move the desired project files to the project root.`
     );
   }
 
@@ -479,7 +514,7 @@ async function ensureProjectRootStructure(
 
   await fs.rm(nestedPath, { recursive: true, force: true });
   log(
-    `Detected Next.js project inside subdirectory "${nestedName}". Contents moved to the project root.`
+    `Detected project inside subdirectory "${nestedName}". Contents moved to the project root.`
   );
 }
 
@@ -569,6 +604,109 @@ async function appendCommandLogs(
   });
 }
 
+/**
+ * Run pip install with fallback - tries multiple methods (pip3, pip, python -m pip, etc.)
+ */
+async function runPipInstall(
+  installArgs: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  logger: (chunk: Buffer | string) => void
+): Promise<void> {
+  let lastError: unknown;
+
+  for (const option of pipOptions) {
+    try {
+      const finalArgs = [...option.args, ...installArgs];
+      await appendCommandLogs(option.cmd, finalArgs, cwd, env, logger);
+      return; // Success
+    } catch (error) {
+      lastError = error;
+      
+      // If command not found, try next option
+      if (isCommandNotFound(error) && option !== pipOptions[pipOptions.length - 1]) {
+        logger(Buffer.from(`[PreviewManager] '${option.cmd}' not found, trying next method...`));
+        continue;
+      }
+      
+      // If command failed with exit code, it might be PEP 668 (externally managed environment)
+      // Try with --break-system-packages as a fallback
+      if (
+        String(error).includes('exited with code') && 
+        !installArgs.includes('--break-system-packages')
+      ) {
+         try {
+           logger(Buffer.from(`[PreviewManager] Install failed, retrying with --break-system-packages...`));
+           const breakArgs = [...option.args, ...installArgs, '--break-system-packages'];
+           await appendCommandLogs(option.cmd, breakArgs, cwd, env, logger);
+           return; // Success on retry
+         } catch (breakError) {
+           // If that failed too, it might be permission issue. Try --user
+           if (!installArgs.includes('--user')) {
+             try {
+               logger(Buffer.from(`[PreviewManager] Install failed again, retrying with --user --break-system-packages...`));
+               const userArgs = [...option.args, ...installArgs, '--user', '--break-system-packages'];
+               await appendCommandLogs(option.cmd, userArgs, cwd, env, logger);
+               return; // Success on second retry
+             } catch (userError) {
+               lastError = userError;
+             }
+           } else {
+             lastError = breakError;
+           }
+         }
+      }
+
+      // If we are here, we failed and likely shouldn't try other binaries if the first one was found but failed.
+      // But for robustness, we continue if it wasn't the last option? 
+      // Actually usually 'python -m pip' is the most reliable. If that failed, others will likely fail too.
+      // But let's stick to the flow: if it's strictly NOT ENOENT, we probably shouldn't continue loop unless we want to be super aggressive.
+      // Given the 'break-system-packages' retry didn't work, we probably just stop.
+      // But the original code allowed continue only on ENOENT.
+      if (option !== pipOptions[pipOptions.length - 1] && isCommandNotFound(error)) {
+         continue; 
+      }
+      
+      // If we caught an exit code error and retry failed, success is false.
+      // We break loop and throw.
+      break; 
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
+ * Verify which python binary is available (python3 vs python vs specific versions)
+ */
+async function detectPythonCommand(env: NodeJS.ProcessEnv): Promise<string> {
+  if (process.platform === 'win32') return 'python';
+  
+  const candidates = ['python3', 'python', 'python3.12', 'python3.11', 'python3.10', 'python3.9', 'python3.8'];
+  
+  for (const cmd of candidates) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(cmd, ['--version'], { 
+          env, 
+          stdio: 'ignore' 
+        });
+        child.on('error', reject);
+        child.on('exit', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`Exit code ${code}`));
+        });
+      });
+      return cmd;
+    } catch {
+      // Continue to next candidate
+    }
+  }
+  
+  // Fallback to python3 as requested by user (standard on modern Linux)
+  return 'python3';
+}
+
 async function ensureDependencies(
   projectPath: string,
   env: NodeJS.ProcessEnv,
@@ -635,8 +773,16 @@ class PreviewManager {
     try {
       await fs.access(path.join(projectPath, 'package.json'));
     } catch {
-      record(`Bootstrapping minimal Next.js app for project ${projectId}`);
-      await scaffoldBasicNextApp(projectPath, projectId);
+      if (project.templateType === 'static-html') {
+        record(`Bootstrapping static HTML app for project ${projectId}`);
+        await scaffoldStaticHtmlApp(projectPath, projectId);
+      } else if (project.templateType === 'flask') {
+        record(`Bootstrapping Flask app for project ${projectId}`);
+        await scaffoldFlaskApp(projectPath, projectId);
+      } else {
+        record(`Bootstrapping minimal Next.js app for project ${projectId}`);
+        await scaffoldBasicNextApp(projectPath, projectId);
+      }
     }
 
     const hadNodeModules = await directoryExists(path.join(projectPath, 'node_modules'));
@@ -713,13 +859,47 @@ class PreviewManager {
 
     await ensureProjectRootStructure(projectPath, queueLog);
 
+    // --- AI Smart Edit Injection Setup ---
+    // Ensure clean state before starting
     try {
-      await fs.access(path.join(projectPath, 'package.json'));
+        await this.cleanupSmartEditScript(projectPath, queueLog);
+    } catch (e) {
+        // Ignore cleanup errors on start
+    }
+    
+    try {
+      await this.injectSmartEditScript(projectPath, queueLog);
+    } catch (e) {
+      queueLog(`[Warning] Failed to inject AI Smart Edit script: ${e instanceof Error ? e.message : e}`);
+    }
+    // -------------------------------
+
+    try {
+      if (project.templateType === 'flask') {
+        const appPyExists = await fileExists(path.join(projectPath, 'app.py'));
+        if (!appPyExists) {
+            console.log(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+            await scaffoldFlaskApp(projectPath, projectId);
+        }
+      } else {
+        await fs.access(path.join(projectPath, 'package.json'));
+      }
     } catch {
-      console.log(
-        `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
-      );
-      await scaffoldBasicNextApp(projectPath, projectId);
+      if (project.templateType === 'static-html') {
+        console.log(
+          `[PreviewManager] Bootstrapping static HTML app for project ${projectId}`
+        );
+        await scaffoldStaticHtmlApp(projectPath, projectId);
+      } else if (project.templateType === 'flask') {
+         // Should be handled above, but fallback just in case
+         console.log(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+         await scaffoldFlaskApp(projectPath, projectId);
+      } else {
+        console.log(
+          `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
+        );
+        await scaffoldBasicNextApp(projectPath, projectId);
+      }
     }
 
     const previewBounds = resolvePreviewBounds();
@@ -728,7 +908,8 @@ class PreviewManager {
       previewBounds.end
     );
 
-    const initialUrl = `http://localhost:${preferredPort}`;
+    const ip = getLocalIpAddress();
+    const initialUrl = `http://${ip}:${preferredPort}`;
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -758,6 +939,16 @@ class PreviewManager {
 
     // Ensure dependencies with the same per-project lock used by installDependencies
     const ensureWithLock = async () => {
+      if (project.templateType === 'flask') {
+        // Python dependency check
+        const venvExists = await directoryExists(path.join(projectPath, 'venv'));
+        if (!venvExists && await fileExists(path.join(projectPath, 'requirements.txt'))) {
+             log(Buffer.from('[PreviewManager] Installing Python dependencies...'));
+             await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log);
+        }
+        return;
+      }
+      
       // If node_modules exists, skip
       if (await directoryExists(path.join(projectPath, 'node_modules'))) {
         return;
@@ -784,76 +975,58 @@ class PreviewManager {
 
     await ensureWithLock();
 
-    const packageJson = await readPackageJson(projectPath);
-    const hasPredev = Boolean(packageJson?.scripts?.predev);
-
-    if (hasPredev) {
-      await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
-    }
+    // ... (rest of start method logic remains similar but needs modification for spawning)
+    
+    // Determine command to run based on project type
+    let spawnCommand = npmCommand;
+    let spawnArgs: string[] = [];
 
     const overrides = await collectEnvOverrides(projectPath);
-
-    if (overrides.port) {
-      if (
-        overrides.port < previewBounds.start ||
-        overrides.port > previewBounds.end
-      ) {
-        queueLog(
-          `Ignoring project-specified port ${overrides.port} because it falls outside the allowed preview range ${previewBounds.start}-${previewBounds.end}.`
-        );
-        delete overrides.port;
-      }
-    }
-
-    if (overrides.url) {
-      try {
-        const parsed = new URL(overrides.url);
-        if (parsed.port) {
-          const parsedPort = parsePort(parsed.port);
-          if (
-            parsedPort &&
-            (parsedPort < previewBounds.start ||
-              parsedPort > previewBounds.end)
-          ) {
-            queueLog(
-              `Ignoring project-specified NEXT_PUBLIC_APP_URL (${overrides.url}) because port ${parsed.port} is outside the allowed preview range ${previewBounds.start}-${previewBounds.end}.`
-            );
-            delete overrides.url;
-          }
-        }
-      } catch {
-        queueLog(
-          `Ignoring project-specified NEXT_PUBLIC_APP_URL (${overrides.url}) because it could not be parsed as a valid URL.`
-        );
-        delete overrides.url;
-      }
-    }
-
-    flushPendingLogs();
 
     if (overrides.port && overrides.port !== previewProcess.port) {
       previewProcess.port = overrides.port;
       env.PORT = String(overrides.port);
       env.WEB_PORT = String(overrides.port);
-      log(
-        Buffer.from(
-          `[PreviewManager] Detected project-specified port ${overrides.port}.`
-        )
-      );
+      log(Buffer.from(`[PreviewManager] Detected project-specified port ${overrides.port}.`));
     }
 
-    const effectivePort = previewProcess.port;
-    let resolvedUrl: string = `http://localhost:${effectivePort}`;
+    const effectivePortFinal = previewProcess.port;
+    
+    // Update URL with effective port/url
+    let resolvedUrl: string = `http://${ip}:${effectivePortFinal}`;
     if (typeof overrides.url === 'string' && overrides.url.trim().length > 0) {
       resolvedUrl = overrides.url.trim();
     }
-
     env.NEXT_PUBLIC_APP_URL = resolvedUrl;
     previewProcess.url = resolvedUrl;
 
+    if (project.templateType === 'flask') {
+       spawnCommand = await detectPythonCommand(env);
+       spawnArgs = ['app.py'];
+       // Ensure PORT env var is respected by Flask app
+       env.PORT = String(effectivePortFinal);
+       log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand}`));
+    } else {
+        // Node/Next logic
+        const packageJson = await readPackageJson(projectPath);
+        const hasPredev = Boolean(packageJson?.scripts?.predev);
+
+        if (hasPredev) {
+          await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
+        }
+         spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal)];
+    }
+
+    // Inject Smart Edit Script
+    try {
+        await this.injectAllHtmlFiles(projectId);
+    } catch (e) {
+        console.warn(`[PreviewManager] Failed to inject Smart Edit script: ${e}`);
+    }
+
     const child = spawn(
-      npmCommand,
-      ['run', 'dev', '--', '--port', String(effectivePort)],
+      spawnCommand,
+      spawnArgs,
       {
         cwd: projectPath,
         env,
@@ -862,6 +1035,7 @@ class PreviewManager {
       }
     );
 
+    // ... (std/err handlers)
     previewProcess.process = child;
     this.processes.set(projectId, previewProcess);
 
@@ -934,6 +1108,19 @@ class PreviewManager {
       };
     }
 
+    // Cleanup injected script on stop
+    const project = await getProjectById(projectId);
+    if (project) {
+        const projectPath = project.repoPath
+          ? path.resolve(project.repoPath)
+          : path.join(process.cwd(), 'projects', projectId);
+        try {
+            await this.cleanupSmartEditScript(projectPath, (msg) => console.log(`[PreviewManager] ${msg}`));
+        } catch (e) {
+            console.warn('[PreviewManager] Failed to cleanup script on stop:', e);
+        }
+    }
+
     try {
       processInfo.process?.kill('SIGTERM');
     } catch (error) {
@@ -953,6 +1140,147 @@ class PreviewManager {
       status: 'stopped',
       logs: processInfo.logs,
     };
+  }
+
+  // ... (getStatus, getLogs remain)
+
+  private async injectAllHtmlFiles(projectId: string): Promise<void> {
+    const project = await getProjectById(projectId);
+    if (!project) return;
+
+    const projectPath = project.repoPath
+      ? path.resolve(project.repoPath)
+      : path.join(process.cwd(), 'projects', projectId);
+    
+    // 1. Prepare script content
+    const scriptPath = path.join(process.cwd(), 'public', 'scripts', 'ai-smart-edit.js');
+    let scriptContent = '';
+    try {
+      scriptContent = await fs.readFile(scriptPath, 'utf8');
+    } catch {
+      return;
+    }
+
+    const scriptTag = `
+<!-- AI SMART EDIT INJECTION START -->
+<script>
+${scriptContent}
+</script>
+<!-- AI SMART EDIT INJECTION END -->
+`;
+    
+    // 2. Inject into ALL HTML files (recursively find .html)
+    const log = (msg: string) => console.log(`[PreviewManager] [Inject] ${msg}`);
+
+    const injectRecursively = async (dir: string) => {
+        try {
+            const entries = await fs.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'venv' || entry.name === '__pycache__') continue;
+                    await injectRecursively(fullPath);
+                } else if (entry.isFile() && entry.name.endsWith('.html')) {
+                    await this.injectIntoHtmlFile(fullPath, scriptTag, log);
+                }
+            }
+        } catch {
+             // ignore
+        }
+    };
+
+    try {
+        await injectRecursively(projectPath);
+    } catch (e) {
+        log(`Failed to recursively inject: ${e}`);
+    }
+  }
+
+  private async cleanupSmartEditScript(projectPath: string, log: (msg: string) => void): Promise<void> {
+    const injectRecursively = async (dir: string) => {
+        try {
+            const entries = await fs.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'venv' || entry.name === '__pycache__') continue;
+                    await injectRecursively(fullPath);
+                } else if (entry.isFile() && entry.name.endsWith('.html')) {
+                    await this.removeScriptFromHtmlFile(fullPath, log);
+                }
+            }
+        } catch {
+            // ignore
+        }
+    };
+    await injectRecursively(projectPath);
+  }
+
+  private async removeScriptFromHtmlFile(filePath: string, log: (msg: string) => void): Promise<void> {
+      try {
+          const content = await fs.readFile(filePath, 'utf8');
+          const startMarker = '<!-- AI SMART EDIT INJECTION START -->';
+          const endMarker = '<!-- AI SMART EDIT INJECTION END -->';
+          
+          let newContent = content;
+          let hasChanges = false;
+          
+          // Loop to remove all instances
+          while (true) {
+              const startIndex = newContent.indexOf(startMarker);
+              if (startIndex === -1) break;
+
+              const endIndex = newContent.indexOf(endMarker, startIndex);
+              if (endIndex === -1) {
+                   // If we have a start but no end, we abort to strictly avoid data loss
+                   log(`[WARNING] Malformed injection markers in ${path.basename(filePath)}. Aborting cleanup.`);
+                   break;
+              }
+
+              // Calculate the range to remove
+              let removeStart = startIndex;
+              const removeEnd = endIndex + endMarker.length;
+
+              // Look backwards from startIndex to consume preceding whitespace up to a '>'
+              // This strictly replicates the regex logic (?<=[>])[\s\r\n]+ but safely
+              let cursor = startIndex - 1;
+              while (cursor >= 0) {
+                  const char = newContent[cursor];
+                  if (char === ' ' || char === '\n' || char === '\r' || char === '\t') {
+                      cursor--;
+                  } else if (char === '>') {
+                      // Found the closing bracket of the previous tag, so we can verify this whitespace is safe to remove
+                      removeStart = cursor + 1; // Start removal AFTER the '>'
+                      break;
+                  } else {
+                      // Found meaningful content (not whitespace, not '>'), so DO NOT touch the whitespace
+                      // This ensures we don't merge distinct text nodes or break layout if not adjacent to a tag
+                      break;
+                  }
+              }
+
+              // Perform the cut
+              newContent = newContent.substring(0, removeStart) + newContent.substring(removeEnd);
+              hasChanges = true;
+          }
+
+          if (hasChanges && newContent !== content) {
+              await fs.writeFile(filePath, newContent, 'utf8');
+              log(`Removed AI Smart Edit script from ${path.basename(filePath)}`);
+          }
+      } catch (e) {
+          log(`Failed to cleanup ${path.basename(filePath)}: ${e}`);
+      }
+  }
+
+  public async injectRoute(projectId: string, route: string): Promise<{ injected: boolean; detectedRoute: string }> {
+    try {
+      await this.injectAllHtmlFiles(projectId);
+      return { injected: true, detectedRoute: route };
+    } catch (e) {
+      console.warn(`[PreviewManager] Failed to inject route ${route}:`, e);
+      return { injected: false, detectedRoute: route };
+    }
   }
 
   public getStatus(projectId: string): PreviewInfo {
@@ -982,12 +1310,73 @@ class PreviewManager {
       pid: processInfo.process?.pid,
     };
   }
+
+  private async injectSmartEditScript(projectPath: string, log: (msg: string) => void): Promise<void> {
+    const scriptPath = path.join(process.cwd(), 'public', 'scripts', 'ai-smart-edit.js');
+    let scriptContent = '';
+    
+    try {
+      scriptContent = await fs.readFile(scriptPath, 'utf8');
+    } catch (e) {
+      log(`Could not read ai-smart-edit.js from ${scriptPath}`);
+      return;
+    }
+
+    const scriptTag = `<!-- AI SMART EDIT INJECTION START --><script>${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+    
+    // Determine where to inject based on project structure
+    // 1. Static HTML (index.html)
+    const indexHtmlPath = path.join(projectPath, 'index.html');
+    if (await fileExists(indexHtmlPath)) {
+      await this.injectIntoHtmlFile(indexHtmlPath, scriptTag, log);
+      return;
+    }
+
+    // 2. Flask (templates/index.html)
+    const flaskTemplatePath = path.join(projectPath, 'templates', 'index.html');
+    if (await fileExists(flaskTemplatePath)) {
+       await this.injectIntoHtmlFile(flaskTemplatePath, scriptTag, log);
+       return;
+    }
+    
+    // 3. For generic Next.js/React, we might not have a simple index.html to inject into easily
+    // without parsing complex app directories. For now, we skip or handle if there's a specific public/index.html
+    // log('No suitable entry point (index.html) found for AI Smart Edit injection.');
+  }
+
+  private async injectIntoHtmlFile(filePath: string, injection: string, log: (msg: string) => void): Promise<void> {
+    try {
+      let content = await fs.readFile(filePath, 'utf8');
+      
+      // Check if already injected
+      if (content.includes('AI SMART EDIT INJECTION START')) {
+         // Replace existing injection to ensure latest version
+         content = content.replace(/<!-- AI SMART EDIT INJECTION START -->[\s\S]*?<!-- AI SMART EDIT INJECTION END -->/, injection);
+         log(`Updated AI Smart Edit script in ${path.basename(filePath)}`);
+      } else {
+        // Inject before </body>
+        if (content.includes('</body>')) {
+          content = content.replace('</body>', `${injection}</body>`);
+          log(`Injected AI Smart Edit script into ${path.basename(filePath)}`);
+        } else {
+          // Fallback: append to end
+          content += injection;
+          log(`Appended AI Smart Edit script to ${path.basename(filePath)} (no </body> tag found)`);
+        }
+      }
+      
+      await fs.writeFile(filePath, content, 'utf8');
+    } catch(e) {
+      log(`Failed to update ${path.basename(filePath)}: ${e}`);
+    }
+  }
 }
 
 const globalPreviewManager = globalThis as unknown as {
-  __claudable_preview_manager__?: PreviewManager;
+  __claudable_preview_manager_v3__?: PreviewManager;
 };
 
 export const previewManager: PreviewManager =
-  globalPreviewManager.__claudable_preview_manager__ ??
-  (globalPreviewManager.__claudable_preview_manager__ = new PreviewManager());
+  globalPreviewManager.__claudable_preview_manager_v3__ ??
+  (globalPreviewManager.__claudable_preview_manager_v3__ = new PreviewManager());
+

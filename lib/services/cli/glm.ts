@@ -758,13 +758,56 @@ export async function initializeNextJsProject(
   initialPrompt: string,
   model: string = GLM_DEFAULT_MODEL,
   requestId?: string,
+  projectType?: string
 ): Promise<void> {
-  const fullPrompt = `
+  const typeLabel = projectType || 'nextjs';
+  console.log(`[GLMService] Initializing ${typeLabel} project: ${projectId}`);
+
+  // Create prompt based on project type
+  let fullPrompt: string;
+  
+  if (projectType === 'static-html') {
+    fullPrompt = `
+Create a new static HTML website with the following requirements:
+${initialPrompt}
+
+Use semantic HTML5, modern CSS, and vanilla JavaScript.
+Set up a clean file structure (index.html, styles.css, script.js).
+Make it responsive and accessible.
+`.trim();
+  } else if (projectType === 'react') {
+    fullPrompt = `
+Create a new React application with the following requirements:
+${initialPrompt}
+
+Use React 18+, TypeScript, and Tailwind CSS.
+Set up the basic project structure and implement the requested features.
+`.trim();
+  } else if (projectType === 'vue') {
+    fullPrompt = `
+Create a new Vue.js application with the following requirements:
+${initialPrompt}
+
+Use Vue 3 with Composition API, TypeScript, and Tailwind CSS.
+Set up the basic project structure and implement the requested features.
+`.trim();
+  } else if (projectType === 'flask') {
+    fullPrompt = `
+Create a new Flask application with the following requirements:
+${initialPrompt}
+
+Use Flask 3 with Python 3.x, and set up the basic project structure and implement the requested features.
+`.trim();
+  } else {
+    // Default to Next.js
+    fullPrompt = `
 Create a new Next.js 15 application with the following requirements:
 ${initialPrompt}
 
 Use App Router, TypeScript, and Tailwind CSS.
-Set up the basic project structure and implement the requested features.`.trim();
+Set up the basic project structure and implement the requested features.
+`.trim();
+  }
 
   await executeGLM(projectId, projectPath, fullPrompt, model, undefined, requestId);
 }
@@ -776,6 +819,7 @@ export async function applyChanges(
   model: string = GLM_DEFAULT_MODEL,
   sessionId?: string,
   requestId?: string,
+  _projectType?: string,
 ): Promise<void> {
   await executeGLM(projectId, projectPath, instruction, model, sessionId, requestId);
 }

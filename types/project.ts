@@ -1,3 +1,4 @@
+import { TemplateType } from './backend';
 import type { CLIType } from './cli';
 
 export type ProjectStatus =
@@ -37,6 +38,7 @@ export interface Project {
   };
   preferredCli?: CLIType | null;
   selectedModel?: string | null;
+  templateType?: TemplateType | null;
   fallbackEnabled?: boolean;
 }
 

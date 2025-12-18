@@ -19,6 +19,7 @@ import {
   markUserRequestAsCompleted,
   markUserRequestAsFailed,
 } from '@/lib/services/user-requests';
+import { getSystemPromptForProjectType } from '@/lib/constants/projectTypes';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
 
@@ -566,7 +567,8 @@ export async function executeClaude(
   instruction: string,
   model: string = CLAUDE_DEFAULT_MODEL,
   sessionId?: string,
-  requestId?: string
+  requestId?: string,
+  projectType?: string
 ): Promise<void> {
   console.log(`\n========================================`);
   console.log(`[ClaudeService] 🚀 Starting Claude Agent SDK`);
@@ -723,17 +725,7 @@ export async function executeClaude(
         model: resolvedModel,
         resume: sessionId, // Resume previous session
         permissionMode: 'bypassPermissions', // Auto-approve commands and edits
-        systemPrompt: `You are an expert web developer building a Next.js application.
-- Use Next.js 15 App Router
-- Use TypeScript
-- Use Tailwind CSS for styling
-- Write clean, production-ready code
-- Follow best practices
-- The platform automatically installs dependencies and manages the preview dev server. Do not run package managers or dev-server commands yourself; rely on the existing preview.
-- Keep all project files directly in the project root. Never scaffold frameworks into subdirectories (avoid commands like "mkdir new-app" or "create-next-app my-app"; run generators against the current directory instead).
-- Never override ports or start your own development server processes. Rely on the managed preview service which assigns ports from the approved pool.
-- When sharing a preview link, read the actual NEXT_PUBLIC_APP_URL (e.g. from .env/.env.local or project metadata) instead of assuming a default port.
-- Prefer giving the user the live preview link that is actually running rather than written instructions.`,
+        systemPrompt: getSystemPromptForProjectType(projectType),
         maxOutputTokens,
         // Capture SDK stderr so we can surface real errors instead of just exit code
         stderr: (data: string) => {
@@ -1145,33 +1137,73 @@ export async function executeClaude(
 }
 
 /**
- * Initialize Next.js project with Claude Code
+ * Initialize project with Claude Code
  *
  * @param projectId - Project ID
  * @param projectPath - Project directory path
  * @param initialPrompt - Initial prompt
  * @param model - Claude model to use (default: claude-sonnet-4-5-20250929)
  * @param requestId - (Optional) User request tracking ID
+ * @param projectType - (Optional) Project type for system prompt customization
  */
 export async function initializeNextJsProject(
   projectId: string,
   projectPath: string,
   initialPrompt: string,
   model: string = CLAUDE_DEFAULT_MODEL,
-  requestId?: string
+  requestId?: string,
+  projectType?: string
 ): Promise<void> {
-  console.log(`[ClaudeService] Initializing Next.js project: ${projectId}`);
+  const typeLabel = projectType || 'nextjs';
+  console.log(`[ClaudeService] Initializing ${typeLabel} project: ${projectId}`);
 
-  // Next.js project creation command
-  const fullPrompt = `
+  // Create prompt based on project type
+  let fullPrompt: string;
+  
+  if (projectType === 'static-html') {
+    fullPrompt = `
+Create a new static HTML website with the following requirements:
+${initialPrompt}
+
+Use semantic HTML5, modern CSS, and vanilla JavaScript.
+Set up a clean file structure (index.html, styles.css, script.js).
+Make it responsive and accessible.
+`.trim();
+  } else if (projectType === 'react') {
+    fullPrompt = `
+Create a new React application with the following requirements:
+${initialPrompt}
+
+Use React 18+, TypeScript, and Tailwind CSS.
+Set up the basic project structure and implement the requested features.
+`.trim();
+  } else if (projectType === 'vue') {
+    fullPrompt = `
+Create a new Vue.js application with the following requirements:
+${initialPrompt}
+
+Use Vue 3 with Composition API, TypeScript, and Tailwind CSS.
+Set up the basic project structure and implement the requested features.
+`.trim();
+  } else if (projectType === 'flask') {
+    fullPrompt = `
+Create a new Flask application with the following requirements:
+${initialPrompt}
+
+Use Flask 3 with Python 3.x, and set up the basic project structure and implement the requested features.
+`.trim();
+  } else {
+    // Default to Next.js
+    fullPrompt = `
 Create a new Next.js 15 application with the following requirements:
 ${initialPrompt}
 
 Use App Router, TypeScript, and Tailwind CSS.
 Set up the basic project structure and implement the requested features.
 `.trim();
+  }
 
-  await executeClaude(projectId, projectPath, fullPrompt, model, undefined, requestId);
+  await executeClaude(projectId, projectPath, fullPrompt, model, undefined, requestId, projectType);
 }
 
 /**
@@ -1183,6 +1215,7 @@ Set up the basic project structure and implement the requested features.
  * @param model - Claude model to use (default: claude-sonnet-4-5-20250929)
  * @param sessionId - Session ID
  * @param requestId - (Optional) User request tracking ID
+ * @param projectType - (Optional) Project type for system prompt customization
  */
 export async function applyChanges(
   projectId: string,
@@ -1190,8 +1223,9 @@ export async function applyChanges(
   instruction: string,
   model: string = CLAUDE_DEFAULT_MODEL,
   sessionId?: string,
-  requestId?: string
+  requestId?: string,
+  projectType?: string
 ): Promise<void> {
   console.log(`[ClaudeService] Applying changes to project: ${projectId}`);
-  await executeClaude(projectId, projectPath, instruction, model, sessionId, requestId);
+  await executeClaude(projectId, projectPath, instruction, model, sessionId, requestId, projectType);
 }

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { SendHorizontal, MessageSquare, Image as ImageIcon, Wrench } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
@@ -51,7 +52,7 @@ interface ChatInputProps {
 export default function ChatInput({
   onSendMessage,
   disabled = false,
-  placeholder = "Ask Claudable...",
+  placeholder = "Ask Faithful...",
   mode = 'act',
   onModeChange,
   projectId,
@@ -100,7 +101,14 @@ export default function ChatInput({
   );
 
   const selectedModelValue = useMemo(() => {
-    return modelOptionsForCli.some(opt => opt.id === selectedModel) ? selectedModel : '';
+    // If selectedModel is in the current CLI's options, use it
+    const found = modelOptionsForCli.find(opt => opt.id === selectedModel);
+    if (found) {
+      return selectedModel;
+    }
+    // If not found, the parent should be responsible for syncing
+    // Just return empty string and let the UI handle it
+    return '';
   }, [modelOptionsForCli, selectedModel]);
 
   useEffect(() => {
@@ -248,7 +256,7 @@ export default function ChatInput({
         const imageUrl = URL.createObjectURL(file);
 
         const newImage: UploadedImage = {
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           filename: result.filename,
           path: result.absolute_path,
           url: imageUrl,

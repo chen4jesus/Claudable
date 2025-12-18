@@ -348,6 +348,7 @@ export async function initializeNextJsProject(
   initialPrompt: string,
   model: string = QWEN_DEFAULT_MODEL,
   requestId?: string,
+  _projectType?: string,
 ): Promise<void> {
   const fullPrompt = `
 Create a new Next.js 15 application with the following requirements:
@@ -372,6 +373,7 @@ export async function applyChanges(
   model: string = QWEN_DEFAULT_MODEL,
   _sessionId?: string,
   requestId?: string,
+  _projectType?: string,
 ): Promise<void> {
   await executeQwen(
     projectId,

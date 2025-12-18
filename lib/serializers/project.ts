@@ -15,7 +15,8 @@ export function serializeProject(project: ProjectEntity): Project {
     initialPrompt: project.initialPrompt ?? null,
     preferredCli: (project.preferredCli ?? null) as Project['preferredCli'],
     selectedModel: project.selectedModel ?? null,
-    fallbackEnabled: project.fallbackEnabled,
+    templateType: project.templateType ?? 'nextjs',
+    fallbackEnabled: project.fallbackEnabled
   };
 }
 
