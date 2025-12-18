@@ -328,10 +328,6 @@ async function executeGLM(
       envUpdates.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
     }
 
-    if (!process.env.CLAUDE_CODE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS_WITH_ROOT) {
-      envUpdates.CLAUDE_CODE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS_WITH_ROOT = '1';
-    }
-
     const previousValues: Record<string, string | undefined> = {};
     for (const [key, value] of Object.entries(envUpdates)) {
       previousValues[key] = process.env[key];

@@ -585,12 +585,6 @@ export async function executeClaude(
   const maxOutputTokens = Number.isFinite(configuredMaxTokens) && configuredMaxTokens > 0
     ? configuredMaxTokens
     : 4000;
-  
-  // Set environment variable to allow bypassPermissions even as root/admin.
-  // This is required for some production/container environments.
-  if (!process.env.CLAUDE_CODE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS_WITH_ROOT) {
-    process.env.CLAUDE_CODE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS_WITH_ROOT = '1';
-  }
 
   let hasMarkedTerminalStatus = false;
   let emittedCompletedStatus = false;
@@ -723,7 +717,6 @@ export async function executeClaude(
     // Start Claude Agent SDK query
     console.log(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
     console.log(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
-    
     const response = query({
       prompt: instruction,
       options: {
