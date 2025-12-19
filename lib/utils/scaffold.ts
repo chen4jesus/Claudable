@@ -40,6 +40,8 @@ export async function scaffoldBasicNextApp(
       '@types/node': '^22.10.0',
       eslint: '^9.17.0',
       'eslint-config-next': '15.1.0',
+      postcss: '^8.4.49',
+      autoprefixer: '^10.4.20',
     },
   };
 
@@ -58,6 +60,16 @@ const nextConfig = {
 };
 
 module.exports = nextConfig;
+`
+  );
+
+  await writeFileIfMissing(
+    path.join(projectPath, 'postcss.config.js'),
+    `module.exports = {
+  plugins: {
+    autoprefixer: {},
+  },
+};
 `
   );
 
