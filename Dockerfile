@@ -16,7 +16,7 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y curl git sudo build-essential && \
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     apt-get install -y nodejs && \
-    apt-get install -y python3 python3-pip python3-venv python-is-python3 && \
+    apt-get install -y python3 python3-pip python3-venv python-is-python3 gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # --- Application Dependencies Layer (Cached) ---
@@ -64,7 +64,8 @@ VOLUME ["/var/local/Claudable/prisma/data"]
 VOLUME ["/var/local/Claudable/data"]
 
 # 19. su - claude
-USER claude
+# 19. su - claude
+# USER claude (Handled by entrypoint with gosu)
 
 # Expose the application port range (Web + Preview ports)
 EXPOSE 3000-4000
