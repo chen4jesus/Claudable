@@ -964,8 +964,14 @@ class PreviewManager {
           // Double-check just before install
           await runInstallWithPreferredManager(projectPath, env, log);
         } catch (error) {
-          log(Buffer.from('Dependency installation failed. Cleaning up node_modules to allow retry.'));
-          await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {});
+          log(Buffer.from('Dependency installation failed. Cleaning up node_modules and lockfiles to allow retry.'));
+          await Promise.all([
+            fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'package-lock.json'), { force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'yarn.lock'), { force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'pnpm-lock.yaml'), { force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'bun.lockb'), { force: true }).catch(() => {}),
+          ]);
           throw error;
         } finally {
           this.installing.delete(projectId);
