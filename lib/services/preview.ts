@@ -807,6 +807,10 @@ class PreviewManager {
               collectFromChunk
             );
           }
+        } catch (error) {
+          record('Dependency installation failed. Cleaning up node_modules to allow retry.');
+          await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {});
+          throw error;
         } finally {
           this.installing.delete(projectId);
         }
