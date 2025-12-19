@@ -270,6 +270,7 @@ export default function ChatPage() {
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'ready' | 'error'>('idle');
   const deployPollRef = useRef<NodeJS.Timeout | null>(null);
   const [isStartingPreview, setIsStartingPreview] = useState(false);
+  const [isExplicitlyStopped, setIsExplicitlyStopped] = useState(false);
   const [previewInitializationMessage, setPreviewInitializationMessage] = useState('Starting development server...');
   const [cliStatuses, setCliStatuses] = useState<Record<string, CliStatusSnapshot>>({});
   const [conversationId, setConversationId] = useState<string>(() => {
@@ -776,6 +777,7 @@ const persistProjectPreferences = useCallback(
   const start = useCallback(async () => {
     try {
       setIsStartingPreview(true);
+      setIsExplicitlyStopped(false);
       setPreviewInitializationMessage('Starting development server...');
       
       // Simulate progress updates
@@ -862,6 +864,7 @@ const persistProjectPreferences = useCallback(
     try {
       await fetch(`${API_BASE}/api/projects/${projectId}/preview/stop`, { method: 'POST' });
       setPreviewUrl(null);
+      setIsExplicitlyStopped(true);
     } catch (error) {
       console.error('Error stopping preview:', error);
     }
@@ -2100,7 +2103,7 @@ const persistProjectPreferences = useCallback(
   const previousActiveState = useRef(false);
   
   useEffect(() => {
-    if (!hasActiveRequests && !previewUrl && !isStartingPreview) {
+    if (!hasActiveRequests && !previewUrl && !isStartingPreview && !isExplicitlyStopped) {
       if (!previousActiveState.current) {
         console.debug('🔄 Preview not running; auto-starting');
       } else {
@@ -2110,7 +2113,7 @@ const persistProjectPreferences = useCallback(
     }
 
     previousActiveState.current = hasActiveRequests;
-  }, [hasActiveRequests, previewUrl, isStartingPreview, start]);
+  }, [hasActiveRequests, previewUrl, isStartingPreview, start, isExplicitlyStopped]);
 
   // Poll for file changes in code view
   useEffect(() => {

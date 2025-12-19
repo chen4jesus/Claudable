@@ -387,16 +387,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       }
     }
 
-    try {
-      const status = previewManager.getStatus(project_id);
-      if (!status.url) {
-        previewManager.start(project_id).catch((error) => {
-          console.warn('[API] Failed to auto-start preview (will continue):', error);
-        });
-      }
-    } catch (error) {
-      console.warn('[API] Preview auto-start check failed (will continue):', error);
-    }
 
     if (isInitialPrompt) {
       const executor =
