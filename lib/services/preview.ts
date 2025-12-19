@@ -1123,10 +1123,34 @@ class PreviewManager {
         }
     }
 
-    try {
-      processInfo.process?.kill('SIGTERM');
-    } catch (error) {
-      console.error('[PreviewManager] Failed to stop preview process:', error);
+    if (processInfo.process) {
+      await new Promise<void>((resolve) => {
+        const proc = processInfo.process!;
+        // If already exited, resolve immediately
+        if (proc.exitCode !== null) {
+          resolve();
+          return;
+        }
+
+        // Wait for exit with timeout
+        const timeout = setTimeout(() => {
+          console.warn(`[PreviewManager] Process ${proc.pid} did not exit within 2000ms after SIGTERM.`);
+          resolve();
+        }, 5000);
+
+        proc.once('exit', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+
+        try {
+          proc.kill('SIGTERM');
+        } catch (error) {
+          console.error('[PreviewManager] Failed to stop preview process:', error);
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
     }
 
     this.processes.delete(projectId);
