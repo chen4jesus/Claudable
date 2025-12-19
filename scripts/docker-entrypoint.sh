@@ -22,7 +22,9 @@ fi
 npm run ensure:env
 
 # Run prisma db push to ensure schema matches
-npx prisma db push
+# Override DATABASE_URL to absolute path to ensure we init the file at root/data (where App looks)
+# and not prisma/data (where CLI looks by default relative to schema)
+DATABASE_URL="file:/var/local/Claudable/data/cc.db" npx prisma db push
 
 # Execute the main command
 exec "$@"
