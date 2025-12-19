@@ -59,11 +59,14 @@ RUN cp scripts/docker-entrypoint.sh /usr/local/bin/ && \
     sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && \
     chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Expose data volume for persistence
+VOLUME ["/var/local/Claudable/data"]
+
 # 19. su - claude
 USER claude
 
-# Expose the application port
-EXPOSE 3000
+# Expose the application port range (Web + Preview ports)
+EXPOSE 3000-4000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 
