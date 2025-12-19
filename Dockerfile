@@ -23,6 +23,7 @@ RUN apt-get update && apt-get upgrade -y && \
 # Copy only package files and prisma schema first to cache npm install
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
+COPY scripts ./scripts/
 
 # 11. npm install
 RUN npm install
