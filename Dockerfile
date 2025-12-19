@@ -60,6 +60,7 @@ RUN cp scripts/docker-entrypoint.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Expose data volume for persistence
+VOLUME ["/var/local/Claudable/prisma/data"]
 VOLUME ["/var/local/Claudable/data"]
 
 # 19. su - claude
