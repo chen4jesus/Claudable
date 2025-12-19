@@ -117,7 +117,12 @@ export async function deleteProject(id: string): Promise<void> {
   const project = await getProjectById(id);
   if (project?.repoPath) {
     try {
-      await fs.rm(project.repoPath, { recursive: true, force: true });
+      await fs.rm(project.repoPath, { 
+        recursive: true, 
+        force: true,
+        maxRetries: 5,
+        retryDelay: 500
+      });
     } catch (error) {
       console.warn(`[ProjectService] Failed to delete project directory:`, error);
     }

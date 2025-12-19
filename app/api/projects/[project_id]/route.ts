@@ -11,6 +11,7 @@ import {
   updateProject,
   deleteProject,
 } from '@/lib/services/project';
+import { previewManager } from '@/lib/services/preview';
 import type { UpdateProjectInput } from '@/types/backend';
 import { serializeProject } from '@/lib/serializers/project';
 
@@ -116,6 +117,12 @@ export async function DELETE(
 ) {
   try {
     const { project_id } = await params;
+    
+    // Stop any running preview to release file locks
+    await previewManager.stop(project_id).catch(err => {
+      console.warn(`[API] Failed to stop preview for ${project_id}:`, err);
+    });
+
     await deleteProject(project_id);
 
     return NextResponse.json({

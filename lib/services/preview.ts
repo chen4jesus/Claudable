@@ -799,14 +799,11 @@ class PreviewManager {
     const runInstall = async () => {
       const installPromise = (async () => {
         try {
-          const hasNodeModules = await directoryExists(path.join(projectPath, 'node_modules'));
-          if (!hasNodeModules) {
             await runInstallWithPreferredManager(
               projectPath,
               { ...process.env },
               collectFromChunk
             );
-          }
         } catch (error) {
           record('Dependency installation failed. Cleaning up node_modules to allow retry.');
           await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {});
@@ -953,10 +950,9 @@ class PreviewManager {
         return;
       }
       
-      // If node_modules exists, skip
-      if (await directoryExists(path.join(projectPath, 'node_modules'))) {
-        return;
-      }
+      // Always ensure dependencies (npm will handle caching/idempotency)
+      // Check concurrency lock:
+
       const existing = this.installing.get(projectId);
       if (existing) {
         log(Buffer.from('[PreviewManager] Dependency installation already in progress; waiting...'));
@@ -966,9 +962,11 @@ class PreviewManager {
       const installPromise = (async () => {
         try {
           // Double-check just before install
-          if (!(await directoryExists(path.join(projectPath, 'node_modules')))) {
-            await runInstallWithPreferredManager(projectPath, env, log);
-          }
+          await runInstallWithPreferredManager(projectPath, env, log);
+        } catch (error) {
+          log(Buffer.from('Dependency installation failed. Cleaning up node_modules to allow retry.'));
+          await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {});
+          throw error;
         } finally {
           this.installing.delete(projectId);
         }
