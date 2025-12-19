@@ -27,6 +27,8 @@ COPY scripts ./scripts/
 
 # 11. npm install
 RUN npm install
+# Explicitly ensure prisma 6.1.0 as requested
+RUN npm install prisma@6.1.0 --save-dev --save-exact
 
 # 12. npx prisma generate
 RUN npx prisma generate
