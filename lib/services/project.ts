@@ -7,6 +7,8 @@ import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types/ba
 import fs from 'fs/promises';
 import path from 'path';
 import { normalizeModelId, getDefaultModelForCli } from '@/lib/constants/cliModels';
+import { upsertProjectServiceConnection } from '@/lib/services/project-services';
+import { getGithubUser } from '@/lib/services/github';
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
 const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
@@ -93,6 +95,62 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       previewPort: null,
     } as any,
   });
+
+  // Handle GitHub Auto-Connect for Git Imports
+  if (input.templateType === 'git-import' && input.gitRepoUrl) {
+    try {
+      const gitUrl = input.gitRepoUrl;
+      let repoName = '';
+      let username = '';
+
+      // Simple parsing for GitHub URLs
+      // Expected formats: https://github.com/user/repo, https://github.com/user/repo.git
+      const urlParts = gitUrl.replace(/\.git$/, '').split('/');
+      if (urlParts.length >= 2) {
+        repoName = urlParts[urlParts.length - 1];
+        username = urlParts[urlParts.length - 2];
+      }
+
+      const fullRepoName = username && repoName ? `${username}/${repoName}` : repoName || gitUrl;
+
+      // Verify GitHub Token before connecting
+      try {
+        await getGithubUser();
+        
+        // Retry loop for DB connection to handle potential locks
+        let connected = false;
+        let retries = 3;
+        while (retries > 0 && !connected) {
+          try {
+            await upsertProjectServiceConnection(project.id, 'github', {
+              repo_url: gitUrl,
+              repo_name: fullRepoName,
+              clone_url: gitUrl, // Required for push
+              username: username,
+              owner: username, // Required for push (matches 'username' for personal repos)
+              default_branch: 'main', // Default assumption
+            });
+            connected = true;
+            console.debug(`[ProjectService] Auto-connected GitHub service for ${project.id}`);
+          } catch (dbError) {
+            retries--;
+            console.warn(`[ProjectService] Failed to auto-connect GitHub service (attempt ${3 - retries}/3):`, dbError);
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+            }
+          }
+        }
+        
+        if (!connected) {
+           console.error(`[ProjectService] Failed to auto-connect GitHub service after multiple attempts.`);
+        }
+      } catch (authError) {
+        console.warn(`[ProjectService] GitHub token verification failed. Skipping auto-connect.`, authError);
+      }
+    } catch (error) {
+      console.warn(`[ProjectService] Error in auto-connect logic:`, error);
+    }
+  }
 
   console.debug(`[ProjectService] Created project: ${project.id}`);
   return {
