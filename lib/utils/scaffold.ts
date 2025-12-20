@@ -77,6 +77,24 @@ module.exports = nextConfig;
   );
 
   await writeFileIfMissing(
+    path.join(projectPath, 'tailwind.config.js'),
+    `/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+`
+  );
+
+  await writeFileIfMissing(
     path.join(projectPath, 'tsconfig.json'),
     `{
   "compilerOptions": {
@@ -232,7 +250,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   await writeFileIfMissing(
     path.join(projectPath, 'app/globals.css'),
-    `:root {
+    `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
   color-scheme: light;
 }
 
