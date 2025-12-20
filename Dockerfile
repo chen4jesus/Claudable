@@ -14,9 +14,9 @@ WORKDIR /var/local/Claudable
 # --- System Dependencies Layer (Cached) ---
 # 2. sudo apt update
 # 3. sudo apt upgrade
-# 5. curl ... nodejs setup
-# 7. sudo apt install -y nodejs
-# 8. sudo apt install -y python3 ...
+# 4. curl ... nodejs setup 
+# 5. sudo apt install -y nodejs
+# 6. sudo apt install -y python3 ...
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y curl git sudo build-essential && \
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
@@ -30,34 +30,45 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 COPY scripts ./scripts/
 
-# 11. npm install
+# 7. npm install
 RUN npm install
 # Explicitly ensure prisma 6.1.0 as requested
 RUN npm install prisma@6.1.0 --save-dev --save-exact
 
-# 12. npx prisma generate
+# 8. npx prisma generate
 RUN npx prisma generate
 
 # --- Application Source Layer (Changed frequently) ---
-# 4. git clone ... (Replaced with COPY . .)
+# git clone ... (Replaced with COPY . .)
 COPY . .
 
-# 14. npm run build
+# 9. npm run build
 RUN npm run build
 
-# 15. npm install -g @anthropic-ai/claude-code
+# 10. npm install -g @anthropic-ai/claude-code
 RUN npm install -g @anthropic-ai/claude-code
 
-# 16. sudo useradd -m claude
-# 17. sudo passwd claude
+# 11. sudo useradd -m claude
+# 12. sudo passwd claude
+# Give claude near-root permissions for system tasks within the container
 RUN useradd -m claude && \
     echo "claude:claude" | chpasswd && \
-    usermod -aG sudo claude
+    # Add claude to sudo and root groups for elevated access
+    usermod -aG sudo,root claude && \
+    # Grant passwordless sudo for ALL commands (near-root permissions)
+    echo "claude ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/claude && \
+    chmod 0440 /etc/sudoers.d/claude
 
-# 18. sudo chown -R claude:claude /var/local/Claudable
-RUN chown -R claude:claude /var/local/Claudable
+# 13. sudo chown -R claude:claude /var/local/Claudable
+# Also give claude ownership of common system task directories
+RUN chown -R claude:claude /var/local/Claudable && \
+    # Give claude write access to /tmp and /var/tmp for temp operations
+    chmod 1777 /tmp /var/tmp && \
+    # Create a work directory claude fully owns for system tasks
+    mkdir -p /home/claude/work && \
+    chown -R claude:claude /home/claude
 
-# Setup Entrypoint
+# 14. Setup Entrypoint
 # (We copy it again or ensure it stands correct, though COPY . . handles it)
 # We make sure it is executable
 RUN cp scripts/docker-entrypoint.sh /usr/local/bin/ && \
@@ -68,14 +79,21 @@ RUN cp scripts/docker-entrypoint.sh /usr/local/bin/ && \
 VOLUME ["/var/local/Claudable/prisma/data"]
 VOLUME ["/var/local/Claudable/data"]
 
-# 19. su - claude
-# 19. su - claude
-# USER claude (Handled by entrypoint with gosu)
+# ============================================================
+# ROOT SETUP COMPLETE - SWITCHING TO CLAUDE USER
+# ============================================================
+# All system installations and configuration done as root above.
+# Claude will be the ultimate user who performs tasks in the container.
+# Note: Entrypoint starts as root to fix volume permissions, then drops to claude.
+# ============================================================
 
 # Expose the application port range (Web + Preview ports)
 EXPOSE 3000-4000
 
+# Set working directory for claude user
+WORKDIR /var/local/Claudable
+
 ENTRYPOINT ["docker-entrypoint.sh"]
 
-# 20. npm start
+# 15. npm start (runs as claude via entrypoint gosu)
 CMD ["npm", "start"]
