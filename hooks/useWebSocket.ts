@@ -29,6 +29,7 @@ export function useWebSocket({
   const connectionAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(true);
   const manualCloseRef = useRef(false);
+  const lastWarmupTimeRef = useRef(0); // Timestamp of last warmup fetch
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const handlersRef = useRef({
@@ -267,22 +268,30 @@ export function useWebSocket({
     };
 
     // Warm up the API route to ensure server-side WS upgrade handler is attached
+    // Throttle warmup fetches to avoid excessive HTTP requests during rapid reconnects
     (async () => {
-      try {
-        const warmupUrl = resolveHttpWarmupUrl();
-        await fetch(warmupUrl, { method: 'GET', headers: { 'x-ws-warmup': '1' } });
-        // Wait a bit for the upgrade handler to be fully attached
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch {
-        // Warm-up is best-effort; proceed regardless
-      } finally {
+      const now = Date.now();
+      const timeSinceLastWarmup = now - lastWarmupTimeRef.current;
+      const WARMUP_THROTTLE_MS = 5000; // 5 seconds
+
+      if (timeSinceLastWarmup > WARMUP_THROTTLE_MS) {
         try {
-          openWebSocket();
-        } catch (error) {
-          setIsConnecting(false);
-          console.error('Failed to create WebSocket connection:', error);
-          handlersRef.current.onError?.(error as Error);
+          const warmupUrl = resolveHttpWarmupUrl();
+          await fetch(warmupUrl, { method: 'GET', headers: { 'x-ws-warmup': '1' } });
+          lastWarmupTimeRef.current = Date.now();
+          // Wait a bit for the upgrade handler to be fully attached
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch {
+          // Warm-up is best-effort; proceed regardless
         }
+      }
+
+      try {
+        openWebSocket();
+      } catch (error) {
+        setIsConnecting(false);
+        console.error('Failed to create WebSocket connection:', error);
+        handlersRef.current.onError?.(error as Error);
       }
     })();
   }, [projectId, startHeartbeat, clearHeartbeat]);

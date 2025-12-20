@@ -159,6 +159,9 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   const [showProjectTypeDropdown, setShowProjectTypeDropdown] = useState(false);
   const router = useRouter();
   
+  // Ref for poll interval cleanup
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Track if user has manually selected a type to avoid auto-switching
   const hasManuallySelectedType = useRef(false);
 
@@ -287,6 +290,16 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
 
   const selectedCLIOption = enabledCLIs.find(cli => cli.id === selectedCLI);
   const selectedModelOption = selectedCLIOption?.models.find(model => model.id === selectedModel);
+
+  // Cleanup polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // WebSocket connection for project initialization
   const connectToProjectWebSocket = (projectId: string) => {
@@ -557,7 +570,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       let pollInterval: NodeJS.Timeout | null = null;
       
       // Start polling project status as a fallback
-      pollInterval = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
         try {
           console.debug('📊 Polling project status for:', projectUuid);
           const response = await fetch(`${API_BASE}/api/projects/${projectUuid}`);
@@ -567,13 +580,15 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
             console.debug('📊 Project status from polling:', project?.status);
             
             if (project?.status === 'active' || project?.status === 'idle') {
-              if (pollInterval) clearInterval(pollInterval);
+              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
               setInitializationStep('Project ready! Redirecting...');
               setTimeout(() => {
                 handleInitializationComplete(projectUuid);
               }, 1000);
             } else if (project?.status === 'failed' || project?.status === 'error') {
-              if (pollInterval) clearInterval(pollInterval);
+              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
               setInitializationStep('Project initialization failed');
               setTimeout(() => {
                 setShowInitialization(false);
@@ -590,7 +605,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       setTimeout(() => {
         if (showInitialization && initializingProjectId === projectUuid) {
           console.debug('⏰ Ultimate timeout reached, redirecting to chat page as fallback');
-          if (pollInterval) clearInterval(pollInterval);
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
           setInitializationStep('Project ready! Redirecting...');
           setTimeout(() => {
             handleInitializationComplete(projectUuid);

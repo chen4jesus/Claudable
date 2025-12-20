@@ -37,15 +37,16 @@ export async function scaffoldBasicNextApp(
       postcss: '^8.4.49',
       autoprefixer: '^10.4.20',
       tailwindcss: '^3.4.19',
-      clsx: '^2.1.1'
-    },
-    devDependencies: {
+      clsx: '^2.1.1',
+      // Dev dependencies also included here for global availability
       typescript: '^5.7.2',
       '@types/react': '^19.0.0',
+      '@types/react-dom': '^19.0.0',
       '@types/node': '^22.10.0',
       eslint: '^9.17.0',
-      'eslint-config-next': '15.1.0',
+      'eslint-config-next': '15.1.0'
     },
+    devDependencies: {},
   };
 
   await writeFileIfMissing(
