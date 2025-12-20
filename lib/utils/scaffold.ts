@@ -30,11 +30,13 @@ export async function scaffoldBasicNextApp(
       lint: 'next lint',
     },
     dependencies: {
+      '@heroicons/react': '^2.2.0',
       next: '15.1.0',
       react: '19.0.0',
       'react-dom': '19.0.0',
       postcss: '^8.4.49',
       autoprefixer: '^10.4.20',
+      clsx: '^2.1.1'
     },
     devDependencies: {
       typescript: '^5.7.2',
@@ -42,6 +44,7 @@ export async function scaffoldBasicNextApp(
       '@types/node': '^22.10.0',
       eslint: '^9.17.0',
       'eslint-config-next': '15.1.0',
+      'tailwindcss': '^3.4.19',
     },
   };
 
@@ -54,9 +57,7 @@ export async function scaffoldBasicNextApp(
     path.join(projectPath, 'next.config.js'),
     `/** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    typedRoutes: true,
-  },
+  // Remove experimental typedRoutes for now
 };
 
 module.exports = nextConfig;
@@ -67,6 +68,7 @@ module.exports = nextConfig;
     path.join(projectPath, 'postcss.config.js'),
     `module.exports = {
   plugins: {
+    tailwindcss: {},
     autoprefixer: {},
   },
 };
@@ -90,9 +92,18 @@ module.exports = nextConfig;
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "incremental": true
+    "incremental": true,
+    "plugins": [{"name": "next"}],
+     "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/components/*": ["./components/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/types/*": ["./types/*"],
+      "@/data/*": ["./data/*"]
+    }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx", "next-env.d.ts", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
 `
