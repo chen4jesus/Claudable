@@ -36,6 +36,7 @@ export async function scaffoldBasicNextApp(
       'react-dom': '19.0.0',
       postcss: '^8.4.49',
       autoprefixer: '^10.4.20',
+      tailwindcss: '^3.4.19',
       clsx: '^2.1.1'
     },
     devDependencies: {
@@ -44,7 +45,6 @@ export async function scaffoldBasicNextApp(
       '@types/node': '^22.10.0',
       eslint: '^9.17.0',
       'eslint-config-next': '15.1.0',
-      'tailwindcss': '^3.4.19',
     },
   };
 

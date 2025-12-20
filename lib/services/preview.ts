@@ -1229,6 +1229,7 @@ ${scriptContent}
   }
 
   private async cleanupSmartEditScript(projectPath: string, log: (msg: string) => void): Promise<void> {
+    // 1. Clean up HTML files (static/Flask)
     const injectRecursively = async (dir: string) => {
         try {
             const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -1246,6 +1247,84 @@ ${scriptContent}
         }
     };
     await injectRecursively(projectPath);
+
+    // 2. Clean up Next.js App Router (layout.tsx / layout.js)
+    const appLayoutTsxPath = path.join(projectPath, 'app', 'layout.tsx');
+    const appLayoutJsPath = path.join(projectPath, 'app', 'layout.js');
+    if (await fileExists(appLayoutTsxPath)) {
+      await this.removeSmartEditFromNextJsFile(appLayoutTsxPath, log);
+    }
+    if (await fileExists(appLayoutJsPath)) {
+      await this.removeSmartEditFromNextJsFile(appLayoutJsPath, log);
+    }
+
+    // 3. Clean up Next.js Pages Router (_app.tsx / _app.js)
+    const pagesAppTsxPath = path.join(projectPath, 'pages', '_app.tsx');
+    const pagesAppJsPath = path.join(projectPath, 'pages', '_app.js');
+    if (await fileExists(pagesAppTsxPath)) {
+      await this.removeSmartEditFromNextJsFile(pagesAppTsxPath, log);
+    }
+    if (await fileExists(pagesAppJsPath)) {
+      await this.removeSmartEditFromNextJsFile(pagesAppJsPath, log);
+    }
+
+    // 4. Remove the copied script file from public/scripts/
+    const copiedScriptPath = path.join(projectPath, 'public', 'scripts', 'ai-smart-edit.js');
+    try {
+      await fs.unlink(copiedScriptPath);
+      log(`Removed ai-smart-edit.js from public/scripts/`);
+    } catch {
+      // File doesn't exist or already removed - ignore
+    }
+  }
+
+  /**
+   * Remove AI Smart Edit injection from Next.js layout/app files
+   */
+  private async removeSmartEditFromNextJsFile(filePath: string, log: (msg: string) => void): Promise<void> {
+    try {
+      let content = await fs.readFile(filePath, 'utf8');
+      
+      // Check if our injection marker exists
+      if (!content.includes('AI_SMART_EDIT_INJECTED') && !content.includes('ai-smart-edit.js')) {
+        return;
+      }
+
+      let hasChanges = false;
+
+      // Remove the Script component line(s)
+      const scriptLinePattern = /\s*\{\/\*\s*AI_SMART_EDIT_INJECTED\s*\*\/\}\s*\n?\s*<Script[^>]*ai-smart-edit\.js[^>]*\/>\s*\n?/g;
+      if (scriptLinePattern.test(content)) {
+        content = content.replace(scriptLinePattern, '');
+        hasChanges = true;
+      }
+
+      // Also try alternative pattern (just the Script tag without comment)
+      const scriptOnlyPattern = /<Script[^>]*ai-smart-edit\.js[^>]*\/>\s*\n?/g;
+      if (scriptOnlyPattern.test(content)) {
+        content = content.replace(scriptOnlyPattern, '');
+        hasChanges = true;
+      }
+
+      // Remove the Script import if it was added solely for our injection
+      // Only remove if there are no other uses of Script in the file
+      const scriptUsageCount = (content.match(/<Script/g) || []).length;
+      if (scriptUsageCount === 0) {
+        // Remove the import line
+        const importPattern = /import\s+Script\s+from\s+['"]next\/script['"];\s*\n?/g;
+        if (importPattern.test(content)) {
+          content = content.replace(importPattern, '');
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        await fs.writeFile(filePath, content, 'utf8');
+        log(`Cleaned up AI Smart Edit from ${path.basename(filePath)}`);
+      }
+    } catch (e) {
+      log(`Failed to cleanup ${path.basename(filePath)}: ${e}`);
+    }
   }
 
   private async removeScriptFromHtmlFile(filePath: string, log: (msg: string) => void): Promise<void> {
@@ -1371,9 +1450,200 @@ ${scriptContent}
        return;
     }
     
-    // 3. For generic Next.js/React, we might not have a simple index.html to inject into easily
-    // without parsing complex app directories. For now, we skip or handle if there's a specific public/index.html
-    // log('No suitable entry point (index.html) found for AI Smart Edit injection.');
+    // 3. Next.js App Router (app/layout.tsx)
+    const appLayoutPath = path.join(projectPath, 'app', 'layout.tsx');
+    if (await fileExists(appLayoutPath)) {
+      await this.injectSmartEditForNextJs(projectPath, appLayoutPath, scriptPath, log);
+      return;
+    }
+
+    // 4. Next.js App Router (app/layout.js)
+    const appLayoutJsPath = path.join(projectPath, 'app', 'layout.js');
+    if (await fileExists(appLayoutJsPath)) {
+      await this.injectSmartEditForNextJs(projectPath, appLayoutJsPath, scriptPath, log);
+      return;
+    }
+
+    // 5. Next.js Pages Router (_app.tsx or pages/_app.tsx)
+    const pagesAppPath = path.join(projectPath, 'pages', '_app.tsx');
+    if (await fileExists(pagesAppPath)) {
+      await this.injectSmartEditForNextJsPages(projectPath, pagesAppPath, scriptPath, log);
+      return;
+    }
+
+    const pagesAppJsPath = path.join(projectPath, 'pages', '_app.js');
+    if (await fileExists(pagesAppJsPath)) {
+      await this.injectSmartEditForNextJsPages(projectPath, pagesAppJsPath, scriptPath, log);
+      return;
+    }
+
+    // log('No suitable entry point found for AI Smart Edit injection.');
+  }
+
+  /**
+   * Inject AI Smart Edit script for Next.js App Router projects
+   * - Copies the script to the project's public/scripts/ folder
+   * - Modifies the layout.tsx to include a Script component
+   */
+  private async injectSmartEditForNextJs(
+    projectPath: string,
+    layoutPath: string,
+    sourceScriptPath: string,
+    log: (msg: string) => void
+  ): Promise<void> {
+    try {
+      // 1. Copy the script to project's public/scripts/
+      const targetScriptDir = path.join(projectPath, 'public', 'scripts');
+      const targetScriptPath = path.join(targetScriptDir, 'ai-smart-edit.js');
+      
+      await fs.mkdir(targetScriptDir, { recursive: true });
+      await fs.copyFile(sourceScriptPath, targetScriptPath);
+      log(`Copied ai-smart-edit.js to ${path.relative(projectPath, targetScriptPath)}`);
+
+      // 2. Read the layout file
+      let layoutContent = await fs.readFile(layoutPath, 'utf8');
+
+      // Check if already injected
+      if (layoutContent.includes('ai-smart-edit.js') || layoutContent.includes('AI_SMART_EDIT_INJECTED')) {
+        log(`AI Smart Edit already injected in ${path.basename(layoutPath)}`);
+        return;
+      }
+
+      // 3. Check if Script is already imported from next/script
+      const hasScriptImport = /import\s+Script\s+from\s+['"]next\/script['"]/.test(layoutContent) ||
+                              /import\s+{\s*[^}]*Script[^}]*}\s+from\s+['"]next\/script['"]/.test(layoutContent);
+
+      // 4. Add Script import if not present
+      if (!hasScriptImport) {
+        // Find a good place to insert the import - after existing imports
+        const importMatch = layoutContent.match(/^(import\s+.+?['"][^'"]+['"];?\s*\n)/gm);
+        if (importMatch && importMatch.length > 0) {
+          const lastImport = importMatch[importMatch.length - 1];
+          const lastImportIndex = layoutContent.lastIndexOf(lastImport) + lastImport.length;
+          layoutContent = layoutContent.slice(0, lastImportIndex) +
+                          "import Script from 'next/script';\n" +
+                          layoutContent.slice(lastImportIndex);
+        } else {
+          // No imports found, add at the top
+          layoutContent = "import Script from 'next/script';\n" + layoutContent;
+        }
+        log(`Added Script import to ${path.basename(layoutPath)}`);
+      }
+
+      // 5. Inject the Script component before </body>
+      const scriptComponent = `{/* AI_SMART_EDIT_INJECTED */}\n        <Script src="/scripts/ai-smart-edit.js" strategy="afterInteractive" />`;
+      
+      if (layoutContent.includes('</body>')) {
+        layoutContent = layoutContent.replace(
+          '</body>',
+          `${scriptComponent}\n      </body>`
+        );
+        log(`Injected AI Smart Edit Script component into ${path.basename(layoutPath)}`);
+      } else {
+        // Fallback: try to find {children} and add after it
+        const childrenMatch = layoutContent.match(/(\{children\})/);
+        if (childrenMatch) {
+          layoutContent = layoutContent.replace(
+            '{children}',
+            `{children}\n        ${scriptComponent}`
+          );
+          log(`Injected AI Smart Edit Script component after {children} in ${path.basename(layoutPath)}`);
+        } else {
+          log(`Could not find suitable injection point in ${path.basename(layoutPath)}`);
+          return;
+        }
+      }
+
+      // 6. Write the modified layout
+      await fs.writeFile(layoutPath, layoutContent, 'utf8');
+      log(`Successfully enabled AI Smart Edit for Next.js App Router project`);
+
+    } catch (e) {
+      log(`Failed to inject AI Smart Edit for Next.js: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  /**
+   * Inject AI Smart Edit script for Next.js Pages Router projects
+   * - Copies the script to the project's public/scripts/ folder
+   * - Modifies the _app.tsx to include a Script component
+   */
+  private async injectSmartEditForNextJsPages(
+    projectPath: string,
+    appPath: string,
+    sourceScriptPath: string,
+    log: (msg: string) => void
+  ): Promise<void> {
+    try {
+      // 1. Copy the script to project's public/scripts/
+      const targetScriptDir = path.join(projectPath, 'public', 'scripts');
+      const targetScriptPath = path.join(targetScriptDir, 'ai-smart-edit.js');
+      
+      await fs.mkdir(targetScriptDir, { recursive: true });
+      await fs.copyFile(sourceScriptPath, targetScriptPath);
+      log(`Copied ai-smart-edit.js to ${path.relative(projectPath, targetScriptPath)}`);
+
+      // 2. Read the _app file
+      let appContent = await fs.readFile(appPath, 'utf8');
+
+      // Check if already injected
+      if (appContent.includes('ai-smart-edit.js') || appContent.includes('AI_SMART_EDIT_INJECTED')) {
+        log(`AI Smart Edit already injected in ${path.basename(appPath)}`);
+        return;
+      }
+
+      // 3. Check if Script is already imported
+      const hasScriptImport = /import\s+Script\s+from\s+['"]next\/script['"]/.test(appContent);
+
+      // 4. Add Script import if not present
+      if (!hasScriptImport) {
+        const importMatch = appContent.match(/^(import\s+.+?['"][^'"]+['"];?\s*\n)/gm);
+        if (importMatch && importMatch.length > 0) {
+          const lastImport = importMatch[importMatch.length - 1];
+          const lastImportIndex = appContent.lastIndexOf(lastImport) + lastImport.length;
+          appContent = appContent.slice(0, lastImportIndex) +
+                       "import Script from 'next/script';\n" +
+                       appContent.slice(lastImportIndex);
+        } else {
+          appContent = "import Script from 'next/script';\n" + appContent;
+        }
+        log(`Added Script import to ${path.basename(appPath)}`);
+      }
+
+      // 5. Find <Component and add Script after it within the return
+      // For Pages Router, we typically wrap or add after <Component {...pageProps} />
+      const scriptComponent = `\n      {/* AI_SMART_EDIT_INJECTED */}\n      <Script src="/scripts/ai-smart-edit.js" strategy="afterInteractive" />`;
+      
+      // Try to find the Component render and add after it
+      const componentMatch = appContent.match(/<Component\s+[^>]*\/>/);
+      if (componentMatch) {
+        appContent = appContent.replace(
+          componentMatch[0],
+          `${componentMatch[0]}${scriptComponent}`
+        );
+        log(`Injected AI Smart Edit Script component into ${path.basename(appPath)}`);
+      } else {
+        // Try closing tag pattern
+        const closingComponentMatch = appContent.match(/<Component\s+[^>]*>[^<]*<\/Component>/);
+        if (closingComponentMatch) {
+          appContent = appContent.replace(
+            closingComponentMatch[0],
+            `${closingComponentMatch[0]}${scriptComponent}`
+          );
+          log(`Injected AI Smart Edit Script component into ${path.basename(appPath)}`);
+        } else {
+          log(`Could not find Component in ${path.basename(appPath)} for injection`);
+          return;
+        }
+      }
+
+      // 6. Write the modified _app file
+      await fs.writeFile(appPath, appContent, 'utf8');
+      log(`Successfully enabled AI Smart Edit for Next.js Pages Router project`);
+
+    } catch (e) {
+      log(`Failed to inject AI Smart Edit for Next.js Pages Router: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   private async injectIntoHtmlFile(filePath: string, injection: string, log: (msg: string) => void): Promise<void> {
