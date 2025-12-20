@@ -125,7 +125,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     }
 
     // Determine polling interval based on active request status
-    const pollInterval = hasActiveRequests ? 2000 : 5000; // 2s when active, 5s idle
+    const pollInterval = hasActiveRequests ? 5000 : 10000; // 5s when active, 10s idle
 
     // Clean up existing polling
     if (intervalRef.current) {
