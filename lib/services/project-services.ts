@@ -85,6 +85,27 @@ export async function deleteProjectService(serviceId: string): Promise<boolean> 
   }
 }
 
+export async function deleteProjectServiceByProvider(projectId: string, provider: string): Promise<boolean> {
+  try {
+    // First find the connection to get its ID
+    const connection = await prisma.projectServiceConnection.findFirst({
+      where: { projectId, provider },
+    });
+
+    if (!connection) {
+      return false;
+    }
+
+    await prisma.projectServiceConnection.delete({
+      where: { id: connection.id },
+    });
+    return true;
+  } catch (error) {
+    console.error(`[ProjectServices] Failed to delete service by provider:`, error);
+    return false;
+  }
+}
+
 export async function updateProjectServiceData(
   projectId: string,
   provider: string,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteProjectService } from '@/lib/services/project-services';
+import { deleteProjectService, deleteProjectServiceByProvider } from '@/lib/services/project-services';
 
 interface RouteContext {
   params: Promise<{ project_id: string; service_id: string }>;
@@ -7,10 +7,19 @@ interface RouteContext {
 
 export async function DELETE(_request: Request, { params }: RouteContext) {
   try {
-    const { service_id } = await params;
-    const deleted = await deleteProjectService(service_id);
+    const { service_id, project_id } = await params;
+    
+    // The frontend sends the provider name (e.g. 'github') as the service_id
+    // So we try to delete by provider first
+    const deleted = await deleteProjectServiceByProvider(project_id, service_id);
+    
     if (!deleted) {
-      return NextResponse.json({ success: false, error: 'Service not found' }, { status: 404 });
+      // Fallback: try deleting by ID if it happens to be a UUID
+      // This supports both provider names and direct IDs
+      const deletedById = await deleteProjectService(service_id);
+      if (!deletedById) {
+        return NextResponse.json({ success: false, error: 'Service not found' }, { status: 404 });
+      }
     }
 
     return NextResponse.json({ success: true, message: 'Service disconnected' });
