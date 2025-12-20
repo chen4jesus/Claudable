@@ -26,6 +26,7 @@ model Project {
 
   // Repository
   repoPath    String?  @map("repo_path")
+  gitRepoUrl  String?  @map("git_repo_url")
 
   // Initial setup
   initialPrompt String? @map("initial_prompt")

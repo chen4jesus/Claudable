@@ -48,7 +48,31 @@ export async function getProjectById(id: string): Promise<Project | null> {
 export async function createProject(input: CreateProjectInput): Promise<Project> {
   // Create project directory
   const projectPath = path.join(PROJECTS_DIR_ABSOLUTE, input.project_id);
-  await fs.mkdir(projectPath, { recursive: true });
+  
+  // Handle Git clone or directory creation
+  if (input.templateType === 'git-import' && input.gitRepoUrl) {
+    try {
+      console.debug(`[ProjectService] Cloning git repo ${input.gitRepoUrl} to ${projectPath}`);
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
+      
+      // Clone into the target directory
+      await execAsync(`git clone "${input.gitRepoUrl}" "${projectPath}"`);
+      
+      // Remove .git directory to detach from origin (optional, but usually desired for a new project start)
+      // await fs.rm(path.join(projectPath, '.git'), { recursive: true, force: true });
+      
+    } catch (error) {
+      console.error(`[ProjectService] Failed to clone git repo:`, error);
+      // Clean up if clone failed
+      await fs.rm(projectPath, { recursive: true, force: true }).catch(() => {});
+      throw new Error(`Failed to clone repository: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    // Standard directory creation for templates
+    await fs.mkdir(projectPath, { recursive: true });
+  }
 
   // Create project in database
   const project = await prisma.project.create({
@@ -58,14 +82,16 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       description: input.description,
       initialPrompt: input.initialPrompt,
       repoPath: projectPath,
+      gitRepoUrl: input.gitRepoUrl,
       preferredCli: input.preferredCli || 'claude',
       selectedModel: normalizeModelId(input.preferredCli || 'claude', input.selectedModel ?? getDefaultModelForCli(input.preferredCli || 'claude')),
       status: 'idle',
+      fallbackEnabled: false,
       templateType: input.templateType || 'nextjs',
       lastActiveAt: new Date(),
       previewUrl: null,
       previewPort: null,
-    },
+    } as any,
   });
 
   console.debug(`[ProjectService] Created project: ${project.id}`);

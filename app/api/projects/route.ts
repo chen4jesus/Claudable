@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       selectedModel: normalizeModelId(preferredCli, requestedModel ?? getDefaultModelForCli(preferredCli)),
       description: body.description,
       templateType: body.templateType || body.template_type || 'nextjs',
+      gitRepoUrl: body.gitRepoUrl || body.git_repo_url,
     };
 
     // Validation

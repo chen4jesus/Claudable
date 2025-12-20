@@ -4,7 +4,7 @@
 
 export type ProjectStatus = 'idle' | 'running' | 'stopped' | 'error';
 
-export type TemplateType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask';
+export type TemplateType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask' | 'git-import';
 
 export interface Project {
   id: string;
@@ -38,6 +38,7 @@ export interface CreateProjectInput {
   selectedModel?: string;
   description?: string;
   templateType?: TemplateType;
+  gitRepoUrl?: string;
 }
 
 export interface UpdateProjectInput {

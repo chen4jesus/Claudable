@@ -148,6 +148,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   const [enabledCLIs, setEnabledCLIs] = useState<CLIOption[]>([]);
   const [cliStatus, setCLIStatus] = useState<CLIStatus>(() => createCliStatusFallback());
   const [imageUrl, setImageUrl] = useState('');
+  const [gitRepoUrl, setGitRepoUrl] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [imageError, setImageError] = useState('');
   const [showImageInput, setShowImageInput] = useState(false);
@@ -307,8 +308,12 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       throw new Error('Unable to resolve WebSocket URL');
     };
 
-    const connect = () => {
+    const connect = async () => {
       try {
+        // Pre-initialization fetch to "boot" the WebSocket server on the backend if needed
+        const httpUrl = resolveWebSocketUrl().replace(/^ws/, 'http');
+        await fetch(httpUrl).catch(() => {});
+        
         socket = new WebSocket(resolveWebSocketUrl());
       } catch (error) {
         console.error('Failed to initialize project WebSocket:', error);
@@ -332,12 +337,12 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               setInitializationStep(message);
             }
 
-            if (status === 'active') {
+            if (status === 'active' || status === 'idle') {
               setTimeout(() => {
                 socket?.close();
                 handleInitializationComplete(projectId);
               }, 1000);
-            } else if (status === 'failed') {
+            } else if (status === 'failed' || status === 'error') {
               setInitializationStep('Project initialization failed');
               setTimeout(() => {
                 socket?.close();
@@ -389,6 +394,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     setProjectName('');
     setPrompt('');
     setImageUrl('');
+    setGitRepoUrl('');
     setWebsiteUrl('');
     setShowImageInput(false);
     setShowWebsiteInput(false);
@@ -450,7 +456,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   };
 
   async function submit() {
-    if (!projectName.trim() || !prompt.trim()) return;
+    if (!projectName.trim()) return;
+    if (selectedProjectType !== 'git-import' && !prompt.trim()) return;
     
     // Determine CLI and model based on useDefaultSettings
     let finalCLI = selectedCLI;
@@ -503,13 +510,22 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         }
       };
 
-      // Add URL and image if provided
       if (websiteUrl) {
         projectData.websiteUrl = websiteUrl;
       }
       if (imageUrl) {
         projectData.imageUrl = imageUrl;
       }
+      if (selectedProjectType === 'git-import') {
+        if (!gitRepoUrl) {
+           alert('Please enter a Git repository URL');
+           return;
+        }
+        projectData.gitRepoUrl = gitRepoUrl;
+        projectData.initialPrompt = `Importing project from ${gitRepoUrl}. Please analyze the codebase and help me understand and improve it.`;
+        projectData.description = `Imported from ${gitRepoUrl}`;
+      }
+      
       
       console.debug('Sending project data:', JSON.stringify(projectData, null, 2));
       
@@ -550,13 +566,13 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
             const project = payload?.data ?? payload;
             console.debug('📊 Project status from polling:', project?.status);
             
-            if (project?.status === 'active') {
+            if (project?.status === 'active' || project?.status === 'idle') {
               if (pollInterval) clearInterval(pollInterval);
               setInitializationStep('Project ready! Redirecting...');
               setTimeout(() => {
                 handleInitializationComplete(projectUuid);
               }, 1000);
-            } else if (project?.status === 'failed') {
+            } else if (project?.status === 'failed' || project?.status === 'error') {
               if (pollInterval) clearInterval(pollInterval);
               setInitializationStep('Project initialization failed');
               setTimeout(() => {
@@ -659,13 +675,33 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
           <div className="text-center mb-6">
             <div className="text-4xl mb-3">✨</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              What would you like to build?
+              {selectedProjectType === 'git-import' ? 'Which repository to clone?' : 'What would you like to build?'}
             </h2>
             <p className="text-gray-600 ">
-              Describe your project idea in detail
+              {selectedProjectType === 'git-import' 
+                ? 'Enter the public HTTPS URL of the Git repository' 
+                : 'Describe your project idea in detail'}
             </p>
           </div>
 
+          {selectedProjectType === 'git-import' ? (
+             <div className="mb-6">
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <input
+                    type="url"
+                    value={gitRepoUrl}
+                    onChange={(e) => setGitRepoUrl(e.target.value)}
+                    placeholder="https://github.com/username/repo.git"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Note: Only public repositories are currently supported. The repo will be cloned into your new project.
+                  </p>
+                </div>
+             </div>
+          ) : (
+          <div className="flex flex-col">
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 mb-4">
             <textarea 
               value={prompt}
@@ -771,6 +807,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               </MotionDiv>
             )}
           </AnimatePresence>
+          </div>
+          )}
 
           {/* Project Type Selection */}
           <div className="mb-6">
@@ -788,6 +826,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                      selectedProjectType === 'react' ? '⚛️' : 
                      selectedProjectType === 'vue' ? '💚' : 
                      selectedProjectType === 'custom' ? '🛠️' : 
+                     selectedProjectType === 'git-import' ? '📦' : 
                      selectedProjectType === 'flask' ? '🌶️' : '▲'}
                   </span>
                   <div>
@@ -1029,9 +1068,9 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
           {/* Footer */}
           <div className="flex justify-end pt-4 border-t border-gray-200 ">
             <button 
-              className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+               className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={submit}
-              disabled={loading || !projectName.trim() || !prompt.trim() || !!imageError}
+              disabled={loading || !projectName.trim() || (selectedProjectType !== 'git-import' && !prompt.trim()) || !!imageError}
             >
               {loading ? 'Creating Project...' : 'Create Project'}
             </button>

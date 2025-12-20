@@ -749,6 +749,15 @@ export default function HomePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 px-2 py-1">
                 <h2 className="text-gray-900 font-medium text-lg">History</h2>
+                <button
+                  onClick={() => setShowCreate(true)}
+                  className="ml-2 p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-all"
+                  title="New Project"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
@@ -1291,6 +1300,17 @@ export default function HomePage() {
           </motion.div>
         </div>
       )}
+      
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={onCreated}
+        onOpenGlobalSettings={() => {
+          setShowCreate(false);
+          setShowGlobalSettings(true);
+        }}
+      />
       </div>
     </div>
   );

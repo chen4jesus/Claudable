@@ -3,7 +3,7 @@
  * Defines supported project types and their corresponding AI system prompts
  */
 
-export type ProjectType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask';
+export type ProjectType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask' | 'git-import';
 
 export interface ProjectTypeOption {
   id: ProjectType;
@@ -42,6 +42,11 @@ export const PROJECT_TYPE_OPTIONS: ProjectTypeOption[] = [
     id: 'custom',
     name: 'Custom',
     description: 'Custom project without specific framework',
+  },
+  {
+    id: 'git-import',
+    name: 'Import from Git',
+    description: 'Clone an existing Git repository',
   },
 ];
 
@@ -110,6 +115,12 @@ const SYSTEM_PROMPTS: Record<ProjectType, string> = {
 - Make minimal, focused changes that accomplish the user's request
 - Avoid introducing new frameworks or dependencies unless specifically requested
 - When unsure about the project structure, ask for clarification`,
+
+  'git-import': `You are an expert software developer working on an imported Git repository.
+- First, analyze the codebase to understand the project structure, frameworks, and patterns used.
+- Respect the existing coding style and conventions.
+- Check for configuration files (like package.json, requirements.txt, etc.) to identify dependencies and scripts.
+- When adding new features, integrate them seamlessly with the existing architecture.`,
 };
 
 /**
@@ -125,7 +136,7 @@ export function getSystemPromptForProjectType(projectType?: string | null): stri
  */
 export function isValidProjectType(value: unknown): value is ProjectType {
   return typeof value === 'string' && 
-    ['nextjs', 'static-html', 'react', 'vue', 'custom', 'flask'].includes(value);
+    ['nextjs', 'static-html', 'react', 'vue', 'custom', 'flask', 'git-import'].includes(value);
 }
 
 /**
