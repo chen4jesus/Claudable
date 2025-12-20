@@ -3,6 +3,11 @@ FROM ubuntu:22.04
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Environment Variables:
+#   CLAUDE_API_KEY - Z.AI API key for Claude Code (passed via docker run -e)
+#   Example: docker run -e CLAUDE_API_KEY="your-key" -p 3000:3000 claudable
+
+
 # 1. cd /var/local
 WORKDIR /var/local/Claudable
 
