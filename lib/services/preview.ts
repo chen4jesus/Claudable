@@ -215,6 +215,69 @@ async function collectEnvOverrides(projectPath: string): Promise<EnvOverrides> {
   return overrides;
 }
 
+async function enforceFlaskPort(projectPath: string, log: (msg: string) => void): Promise<void> {
+  const appPyPath = path.join(projectPath, 'app.py');
+  try {
+    if (await fileExists(appPyPath)) {
+      let content = await fs.readFile(appPyPath, 'utf8');
+      let changed = false;
+
+      // Ensure 'import os' exists
+      if (!content.includes('import os') && !content.includes('from os import')) {
+        content = 'import os\n' + content;
+        changed = true;
+      }
+
+      // Check for app.run
+      // Allow spaces: app.run ( ... )
+      const appRunRegex = /app\.run\s*\((.*?)\)/s;
+      const match = content.match(appRunRegex);
+
+      if (match) {
+        let args = match[1];
+        let newArgs = args;
+        const originalArgs = args;
+
+        // Check if port arg exists
+        // Match port=VALUE, where VALUE is anything until comma or end
+        const portRegex = /port\s*=\s*([^,)\s]+)/;
+        const portMatch = args.match(portRegex);
+
+        if (portMatch) {
+          const originalValue = portMatch[1];
+          // Replace existing port value with os.environ.get('PORT', <original>)
+          // Avoid double wrapping if already wrapped
+          if (!originalValue.includes('os.environ.get')) {
+             newArgs = args.replace(portRegex, `port=int(os.environ.get('PORT', ${originalValue}))`);
+          }
+        } else {
+             // Append port arg
+             // Check if args is empty or just whitespace
+             if (!args.trim()) {
+                 newArgs = "host='0.0.0.0', port=int(os.environ.get('PORT', 5000))";
+             } else {
+                 newArgs = args + ", port=int(os.environ.get('PORT', 5000))";
+             }
+        }
+        
+        if (newArgs !== originalArgs) {
+             content = content.replace(match[0], `app.run(${newArgs})`);
+             changed = true;
+        }
+      } else {
+          log('[PreviewManager] Could not find app.run() call in app.py to inject port.');
+      }
+
+      if (changed) {
+          await fs.writeFile(appPyPath, content, 'utf8');
+          log('Injected dynamic port configuration into app.py');
+      }
+    }
+  } catch (e) {
+    log(`Failed to enforce Flask port: ${e}`);
+  }
+}
+
 function resolvePreviewBounds(): { start: number; end: number } {
   const envStartRaw = Number.parseInt(process.env.PREVIEW_PORT_START || '', 10);
   const envEndRaw = Number.parseInt(process.env.PREVIEW_PORT_END || '', 10);
@@ -1013,6 +1076,9 @@ class PreviewManager {
     previewProcess.url = resolvedUrl;
 
     if (project.templateType === 'flask') {
+       // Enforce dynamic port in source
+       await enforceFlaskPort(projectPath, queueLog);
+
        spawnCommand = await detectPythonCommand(env);
        spawnArgs = ['app.py'];
        // Ensure PORT env var is respected by Flask app
