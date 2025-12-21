@@ -773,7 +773,9 @@ class PreviewManager {
     try {
       await fs.access(path.join(projectPath, 'package.json'));
     } catch {
-      if (project.templateType === 'static-html') {
+      if (project.templateType === 'git-import') {
+        record('Git import detected. Skipping scaffolding.');
+      } else if (project.templateType === 'static-html') {
         record(`Bootstrapping static HTML app for project ${projectId}`);
         await scaffoldStaticHtmlApp(projectPath, projectId);
       } else if (project.templateType === 'flask') {
@@ -886,7 +888,9 @@ class PreviewManager {
         await fs.access(path.join(projectPath, 'package.json'));
       }
     } catch {
-      if (project.templateType === 'static-html') {
+      if (project.templateType === 'git-import') {
+        console.debug(`[PreviewManager] Git import detected for project ${projectId}. Skipping scaffolding.`);
+      } else if (project.templateType === 'static-html') {
         console.debug(
           `[PreviewManager] Bootstrapping static HTML app for project ${projectId}`
         );
