@@ -752,7 +752,8 @@ async function detectPythonCommand(env: NodeJS.ProcessEnv): Promise<string> {
       await new Promise<void>((resolve, reject) => {
         const child = spawn(cmd, ['--version'], { 
           env, 
-          stdio: 'ignore' 
+          stdio: 'ignore',
+          shell: true  // Use shell for consistent behavior with Flask execution
         });
         child.on('error', reject);
         child.on('exit', (code) => {
@@ -1102,13 +1103,17 @@ class PreviewManager {
         console.warn(`[PreviewManager] Failed to inject Smart Edit script: ${e}`);
     }
 
+    // Use shell:true for Flask projects on all platforms for consistent behavior
+    // Flask needs shell for proper Python command resolution on Linux
+    const useShell = project.templateType === 'flask' ? true : process.platform === 'win32';
+    
     const child = spawn(
       spawnCommand,
       spawnArgs,
       {
         cwd: projectPath,
         env,
-        shell: process.platform === 'win32',
+        shell: useShell,
         stdio: ['ignore', 'pipe', 'pipe'],
       }
     );
