@@ -88,7 +88,7 @@ VOLUME ["/var/local/Claudable/data"]
 # ============================================================
 
 # Expose the application port range (Web + Preview ports)
-EXPOSE 3000-4000
+EXPOSE 3000-65535
 
 # Set working directory for claude user
 WORKDIR /var/local/Claudable
