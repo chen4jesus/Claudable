@@ -228,8 +228,7 @@ async function enforceFlaskPort(projectPath: string, log: (msg: string) => void)
         changed = true;
       }
 
-      // Check for app.run
-      // Allow spaces: app.run ( ... )
+      // Check for app.run - Allow spaces: app.run ( ... )
       const appRunRegex = /app\.run\s*\((.*?)\)/s;
       const match = content.match(appRunRegex);
 
@@ -263,6 +262,58 @@ async function enforceFlaskPort(projectPath: string, log: (msg: string) => void)
         if (newArgs !== originalArgs) {
              content = content.replace(match[0], `app.run(${newArgs})`);
              changed = true;
+        }
+
+        // CRITICAL: Ensure app.run() is inside if __name__ == '__main__': guard
+        // This prevents the Flask server from starting immediately on import
+        const mainGuardRegex = /if\s+__name__\s*==\s*['"]__main__['"]\s*:/;
+        const hasMainGuard = mainGuardRegex.test(content);
+        
+        if (!hasMainGuard) {
+          // Find the app.run() call and wrap it in the guard
+          const appRunFullRegex = /^(\s*)(app\.run\s*\([^)]*\))/m;
+          const runMatch = content.match(appRunFullRegex);
+          
+          if (runMatch) {
+            const indent = runMatch[1] || '';
+            const appRunCall = runMatch[2];
+            // Replace the app.run() line with the guarded version
+            const guardedCode = `\nif __name__ == '__main__':\n${indent}    ${appRunCall}`;
+            content = content.replace(runMatch[0], guardedCode);
+            changed = true;
+            log('[PreviewManager] Wrapped app.run() in if __name__ == "__main__": guard');
+          }
+        } else {
+          // Guard exists - verify app.run() is inside it
+          // Check if app.run() appears before the guard (which would be a problem)
+          const guardIndex = content.search(mainGuardRegex);
+          const appRunIndex = content.search(/app\.run\s*\(/);
+          
+          if (appRunIndex !== -1 && guardIndex !== -1 && appRunIndex < guardIndex) {
+            // app.run() is BEFORE the guard - need to move it inside
+            // Remove the app.run() line from its current location
+            const appRunLineRegex = /^[ \t]*app\.run\s*\([^)]*\)[ \t]*\n?/m;
+            const appRunLineMatch = content.match(appRunLineRegex);
+            
+            if (appRunLineMatch) {
+              const appRunLine = appRunLineMatch[0].trim();
+              // Remove from original location
+              content = content.replace(appRunLineRegex, '');
+              
+              // Find the main guard and add app.run() inside it
+              // Look for content after the guard
+              const guardMatch = content.match(/if\s+__name__\s*==\s*['"]__main__['"]\s*:\s*\n/);
+              if (guardMatch) {
+                const guardEndIndex = content.indexOf(guardMatch[0]) + guardMatch[0].length;
+                // Insert app.run() with proper indentation after the guard
+                const beforeGuard = content.slice(0, guardEndIndex);
+                const afterGuard = content.slice(guardEndIndex);
+                content = beforeGuard + `    ${appRunLine}\n` + afterGuard;
+                changed = true;
+                log('[PreviewManager] Moved app.run() inside existing if __name__ == "__main__": guard');
+              }
+            }
+          }
         }
       } else {
           log('[PreviewManager] Could not find app.run() call in app.py to inject port.');
