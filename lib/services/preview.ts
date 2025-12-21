@@ -152,6 +152,76 @@ async function readPackageJson(
   }
 }
 
+/**
+ * Detect the actual project type based on file markers in the project directory.
+ * This is especially useful for git-imported projects where we need to determine
+ * what kind of project was imported.
+ */
+type DetectedProjectType = 'flask' | 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom';
+
+async function detectProjectType(projectPath: string): Promise<DetectedProjectType> {
+  // Check for Flask (Python) project
+  const appPyPath = path.join(projectPath, 'app.py');
+  const requirementsTxtPath = path.join(projectPath, 'requirements.txt');
+  
+  try {
+    await fs.access(appPyPath);
+    const appPyContent = await fs.readFile(appPyPath, 'utf8');
+    if (appPyContent.includes('flask') || appPyContent.includes('Flask')) {
+      return 'flask';
+    }
+  } catch {
+    // app.py doesn't exist, continue checking
+  }
+  
+  // Check requirements.txt for Flask
+  try {
+    const requirements = await fs.readFile(requirementsTxtPath, 'utf8');
+    if (requirements.toLowerCase().includes('flask')) {
+      return 'flask';
+    }
+  } catch {
+    // requirements.txt doesn't exist, continue checking
+  }
+  
+  // Check for Node.js projects via package.json
+  const packageJson = await readPackageJson(projectPath);
+  
+  if (packageJson) {
+    const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    
+    // Check for Next.js
+    if (deps['next']) {
+      return 'nextjs';
+    }
+    
+    // Check for Vue
+    if (deps['vue'] || deps['nuxt']) {
+      return 'vue';
+    }
+    
+    // Check for React (but not Next.js)
+    if (deps['react'] && !deps['next']) {
+      return 'react';
+    }
+    
+    // Has package.json but no recognized framework - treat as custom
+    return 'custom';
+  }
+  
+  // Check for static HTML project
+  const indexHtmlPath = path.join(projectPath, 'index.html');
+  try {
+    await fs.access(indexHtmlPath);
+    return 'static-html';
+  } catch {
+    // No index.html
+  }
+  
+  // Default to custom if we can't determine the type
+  return 'custom';
+}
+
 async function collectEnvOverrides(projectPath: string): Promise<EnvOverrides> {
   const overrides: EnvOverrides = {};
   const files = ['.env.local', '.env'];
@@ -889,7 +959,16 @@ class PreviewManager {
       await fs.access(path.join(projectPath, 'package.json'));
     } catch {
       if (project.templateType === 'git-import') {
-        record('Git import detected. Skipping scaffolding.');
+        // Detect actual project type for git imports
+        const detectedType = await detectProjectType(projectPath);
+        record(`Git import detected. Detected project type: ${detectedType}`);
+        
+        // Handle Flask projects from git imports
+        if (detectedType === 'flask') {
+          record('Setting up Flask project from git import...');
+          await enforceFlaskPort(projectPath, record);
+        }
+        // For other detected types, dependencies will be installed below
       } else if (project.templateType === 'static-html') {
         record(`Bootstrapping static HTML app for project ${projectId}`);
         await scaffoldStaticHtmlApp(projectPath, projectId);
@@ -1004,7 +1083,18 @@ class PreviewManager {
       }
     } catch {
       if (project.templateType === 'git-import') {
-        console.debug(`[PreviewManager] Git import detected for project ${projectId}. Skipping scaffolding.`);
+        // Detect actual project type for git imports
+        const detectedType = await detectProjectType(projectPath);
+        console.debug(`[PreviewManager] Git import detected. Detected project type: ${detectedType}`);
+        
+        // Update project's effective type for later use in this method
+        // Store detected type for use in spawn command selection
+        (project as any)._detectedType = detectedType;
+        
+        if (detectedType === 'flask') {
+          console.debug(`[PreviewManager] Setting up Flask project from git import`);
+          // Flask setup will be done by enforceFlaskPort below
+        }
       } else if (project.templateType === 'static-html') {
         console.debug(
           `[PreviewManager] Bootstrapping static HTML app for project ${projectId}`
@@ -1131,7 +1221,14 @@ class PreviewManager {
     env.NEXT_PUBLIC_APP_URL = resolvedUrl;
     previewProcess.url = resolvedUrl;
 
-    if (project.templateType === 'flask') {
+    // Determine effective project type (use detected type for git-imports)
+    const effectiveType = project.templateType === 'git-import' 
+      ? (project as any)._detectedType || 'custom'
+      : project.templateType;
+
+    const isFlaskProject = effectiveType === 'flask';
+
+    if (isFlaskProject) {
        // Enforce dynamic port in source
        await enforceFlaskPort(projectPath, queueLog);
 
@@ -1160,7 +1257,7 @@ class PreviewManager {
 
     // Use shell:true for Flask projects on all platforms for consistent behavior
     // Flask needs shell for proper Python command resolution on Linux
-    const useShell = project.templateType === 'flask' ? true : process.platform === 'win32';
+    const useShell = isFlaskProject ? true : process.platform === 'win32';
     
     const child = spawn(
       spawnCommand,
