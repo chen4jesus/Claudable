@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Environment Variables:
 #   CLAUDE_API_KEY - Z.AI API key for Claude Code (passed via docker run -e)
-#   Example: docker run -e CLAUDE_API_KEY="your-key" -p 30000:30000 claudable
+#   Example: docker run -e CLAUDE_API_KEY="your-key" -p 3000:3000 claudable
 
 
 # 1. cd /var/local
@@ -88,7 +88,7 @@ VOLUME ["/var/local/Claudable/data"]
 # ============================================================
 
 # Expose the application port range (Web + Preview ports)
-EXPOSE 3000-40000
+EXPOSE 3000-4000
 
 # Set working directory for claude user
 WORKDIR /var/local/Claudable
