@@ -1023,11 +1023,15 @@ class PreviewManager {
     }
 
     const previewBounds = resolvePreviewBounds();
+    console.info(`[PreviewManager] Preview port range: ${previewBounds.start}-${previewBounds.end} (PREVIEW_PORT_START=${process.env.PREVIEW_PORT_START || 'not set'})`);
+    
     const preferredPort = await findAvailablePort(
       previewBounds.start,
       previewBounds.end
     );
 
+    console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
+    
     const ip = getLocalIpAddress();
     const initialUrl = `http://${ip}:${preferredPort}`;
 
