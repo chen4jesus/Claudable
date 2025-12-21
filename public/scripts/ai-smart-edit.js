@@ -1,20 +1,25 @@
 (function () {
   const NAMESPACE = 'AI_SMART_EDIT';
+  
+  // State
   let isActive = false;
+  let isEditMode = false;
   let overlay = null;
   let selectedOverlay = null;
 
-  // Initialize overlay elements
+  // --- Overlay Management ---
   function createOverlay(id, color, zIndex) {
     const el = document.createElement('div');
     el.id = id;
-    el.style.position = 'absolute';
-    el.style.border = `2px solid ${color}`;
-    el.style.backgroundColor = `${color}33`; // 20% opacity
-    el.style.pointerEvents = 'none'; // Click-through
-    el.style.zIndex = zIndex;
-    el.style.display = 'none';
-    el.style.transition = 'all 0.1s ease-out';
+    el.style.cssText = `
+      position: absolute;
+      border: 2px solid ${color};
+      background-color: ${color}33;
+      pointer-events: none;
+      z-index: ${zIndex};
+      display: none;
+      transition: all 0.1s ease-out;
+    `;
     document.body.appendChild(el);
     return el;
   }
@@ -24,13 +29,15 @@
     if (!selectedOverlay) selectedOverlay = createOverlay('ai-smart-edit-selected', '#f5a623', '2147483647');
   }
 
+  // --- Utility Functions ---
   function getStableSelector(el) {
     if (el.id) return `#${el.id}`;
     let path = [];
     while (el && el.nodeType === Node.ELEMENT_NODE) {
       let selector = el.nodeName.toLowerCase();
       if (el.className && typeof el.className === 'string') {
-        selector += `.${el.className.trim().split(/\s+/).join('.')}`;
+        const classes = el.className.trim().split(/\s+/).filter(c => c && !c.startsWith('ai-smart-edit'));
+        if (classes.length) selector += `.${classes.join('.')}`;
       }
       let siblingIndex = 1;
       let sibling = el.previousElementSibling;
@@ -45,23 +52,32 @@
     return path.join(' > ');
   }
 
+  function updateOverlay(overlayEl, targetEl) {
+    if (!targetEl) {
+      overlayEl.style.display = 'none';
+      return;
+    }
+    const rect = targetEl.getBoundingClientRect();
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+
+    overlayEl.style.display = 'block';
+    overlayEl.style.left = `${rect.left + scrollX}px`;
+    overlayEl.style.top = `${rect.top + scrollY}px`;
+    overlayEl.style.width = `${rect.width}px`;
+    overlayEl.style.height = `${rect.height}px`;
+  }
+
   function captureContext(el) {
     const rect = el.getBoundingClientRect();
     const computed = window.getComputedStyle(el);
-    
-    // Parent info
     const parent = el.parentElement;
     
     return {
       tagName: el.tagName.toLowerCase(),
       id: el.id || '',
       className: el.className instanceof String ? el.className.trim() : (el.classList ? Array.from(el.classList).join(' ') : ''),
-      rect: {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height
-      },
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
       computedStyles: {
         display: computed.display,
         position: computed.position,
@@ -84,88 +100,300 @@
       html: el.outerHTML || '',
       innerHTML: el.innerHTML ? el.innerHTML.substring(0, 300).trim() : '',
       selector: getStableSelector(el),
-      parent: parent ? {
-        tagName: parent.tagName.toLowerCase(),
-        id: parent.id || ''
-      } : null,
+      parent: parent ? { tagName: parent.tagName.toLowerCase(), id: parent.id || '' } : null,
       url: window.location.href,
       route: window.location.pathname,
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight
-      }
+      viewport: { width: window.innerWidth, height: window.innerHeight }
     };
   }
 
-  function updateOverlay(overlayEl, targetEl) {
-    if (!targetEl) {
-      overlayEl.style.display = 'none';
-      return;
-    }
-    const rect = targetEl.getBoundingClientRect();
-    const scrollX = window.scrollX || window.pageXOffset;
-    const scrollY = window.scrollY || window.pageYOffset;
-
-    overlayEl.style.display = 'block';
-    overlayEl.style.left = `${rect.left + scrollX}px`;
-    overlayEl.style.top = `${rect.top + scrollY}px`;
-    overlayEl.style.width = `${rect.width}px`;
-    overlayEl.style.height = `${rect.height}px`;
-  }
-
-  // --- Event Handlers ---
-
+  // --- Selection Mode Handlers ---
   function handleMouseOver(e) {
-    if (!isActive) return;
+    if (!isActive || isEditMode) return;
     updateOverlay(overlay, e.target);
   }
 
   function handleClick(e) {
-    if (!isActive) return;
+    if (!isActive || isEditMode) return;
     e.preventDefault();
     e.stopPropagation();
 
     const target = e.target;
-    // Highlight selected
     updateOverlay(selectedOverlay, target);
     
-    // Capture and send
     const context = captureContext(target);
     window.parent.postMessage({
       type: `${NAMESPACE}:SELECTED`,
       payload: context
-    }, '*'); // In production, replace '*' with specific origin if possible
+    }, '*');
   }
 
-  function handleGenericMessage(e) {
-      // Security measure: In a real environment, check e.origin here
-      // if (e.origin !== "http://localhost:3000") return;
+  // --- Edit Mode Styles ---
+  function injectEditStyles() {
+    if (document.getElementById('ai-smart-edit-styles')) return;
+    
+    const style = document.createElement('style');
+    style.id = 'ai-smart-edit-styles';
+    style.textContent = `
+      .ai-smart-edit-editing [contenteditable="true"] {
+        outline: 2px dashed rgba(0, 150, 255, 0.5) !important;
+        padding: 4px !important;
+        border-radius: 4px !important;
+        transition: all 0.2s !important;
+      }
+      .ai-smart-edit-editing [contenteditable="true"]:hover,
+      .ai-smart-edit-editing [contenteditable="true"]:focus {
+        outline: 2px solid #0096ff !important;
+        background: rgba(0, 150, 255, 0.05) !important;
+        box-shadow: 0 0 15px rgba(0, 150, 255, 0.2) !important;
+      }
+      .ai-smart-edit-editing img {
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+      }
+      .ai-smart-edit-editing img:hover {
+        outline: 3px solid #f5a623 !important;
+        box-shadow: 0 0 15px rgba(245, 166, 35, 0.3) !important;
+      }
+      .ai-smart-edit-editing a {
+        position: relative !important;
+      }
+      .ai-smart-edit-editing a::after {
+        content: '✎';
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: #333;
+        color: white;
+        font-size: 10px;
+        padding: 2px 4px;
+        border-radius: 3px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+      .ai-smart-edit-editing a:hover::after {
+        opacity: 1;
+      }
+    `;
+    document.head.appendChild(style);
+  }
 
-      if (e.data && e.data.type) {
-        switch (e.data.type) {
-          case `${NAMESPACE}:PING`:
-            window.parent.postMessage({ type: `${NAMESPACE}:PONG` }, '*');
-            break;
-          case `${NAMESPACE}:ENABLE`:
-            isActive = true;
-            ensureOverlays();
-            document.body.style.cursor = 'crosshair';
-            document.addEventListener('mouseover', handleMouseOver, true);
-            document.addEventListener('click', handleClick, true);
-            break;
-          case `${NAMESPACE}:DISABLE`:
-            isActive = false;
-            if (overlay) overlay.style.display = 'none';
-            if (selectedOverlay) selectedOverlay.style.display = 'none';
-            document.body.style.cursor = '';
-            document.removeEventListener('mouseover', handleMouseOver, true);
-            document.removeEventListener('click', handleClick, true);
-            break;
+  // --- Edit Mode Functions ---
+  function enableEditMode() {
+    isEditMode = true;
+    injectEditStyles();
+    document.body.classList.add('ai-smart-edit-editing');
+    
+    // Make text elements editable
+    const textSelectors = 'h1, h2, h3, h4, h5, h6, p, span, li, td, th, label, blockquote, figcaption';
+    document.querySelectorAll(textSelectors).forEach(el => {
+      if (el.closest('#ai-smart-edit-hover, #ai-smart-edit-selected')) return;
+      el.contentEditable = 'true';
+    });
+
+    // Divs with direct text content
+    document.querySelectorAll('div').forEach(el => {
+      if (el.closest('#ai-smart-edit-hover, #ai-smart-edit-selected')) return;
+      for (let node of el.childNodes) {
+        if (node.nodeType === 3 && node.textContent.trim().length > 0) {
+          el.contentEditable = 'true';
+          break;
         }
       }
+    });
+
+    // Add image click handlers
+    document.querySelectorAll('img').forEach(img => {
+      img.addEventListener('click', handleImageClick, true);
+    });
+
+    // Add link click handlers
+    document.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', handleLinkClick, true);
+    });
   }
 
-  // Listen for messages from parent
+  function disableEditMode() {
+    isEditMode = false;
+    document.body.classList.remove('ai-smart-edit-editing');
+    
+    // Remove contentEditable
+    document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+      el.contentEditable = 'false';
+    });
+
+    // Remove image handlers
+    document.querySelectorAll('img').forEach(img => {
+      img.removeEventListener('click', handleImageClick, true);
+    });
+
+    // Remove link handlers
+    document.querySelectorAll('a').forEach(link => {
+      link.removeEventListener('click', handleLinkClick, true);
+    });
+  }
+
+  function handleImageClick(e) {
+    if (!isEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const img = e.target;
+    const context = {
+      selector: getStableSelector(img),
+      src: img.src,
+      alt: img.alt || '',
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    };
+    
+    window.parent.postMessage({
+      type: `${NAMESPACE}:IMAGE_CLICK`,
+      payload: context
+    }, '*');
+  }
+
+  function handleLinkClick(e) {
+    if (!isEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const link = e.currentTarget;
+    const context = {
+      selector: getStableSelector(link),
+      href: link.getAttribute('href') || '',
+      text: link.innerText || '',
+      hasChildren: link.children.length > 0
+    };
+    
+    window.parent.postMessage({
+      type: `${NAMESPACE}:LINK_CLICK`,
+      payload: context
+    }, '*');
+  }
+
+  function updateImage(selector, src) {
+    try {
+      const img = document.querySelector(selector);
+      if (img && img.tagName === 'IMG') {
+        img.src = src;
+      }
+    } catch (err) {
+      console.error('[AI Smart Edit] Failed to update image:', err);
+    }
+  }
+
+  function updateLink(selector, href, text) {
+    try {
+      const link = document.querySelector(selector);
+      if (link && link.tagName === 'A') {
+        link.href = href;
+        // Only update text if it's a simple text link (no child elements)
+        if (text !== undefined && link.children.length === 0) {
+          link.innerText = text;
+        }
+      }
+    } catch (err) {
+      console.error('[AI Smart Edit] Failed to update link:', err);
+    }
+  }
+
+  function savePage() {
+    // Clone the document
+    const clone = document.documentElement.cloneNode(true);
+    
+    // Remove our overlays and styles
+    const toRemove = clone.querySelectorAll('#ai-smart-edit-hover, #ai-smart-edit-selected, #ai-smart-edit-styles');
+    toRemove.forEach(el => el.remove());
+    
+    // Remove AI Smart Edit script
+    clone.querySelectorAll('script').forEach(s => {
+      if (s.src && s.src.includes('ai-smart-edit.js')) s.remove();
+    });
+    
+    // Clean up contentEditable and editing class
+    clone.querySelectorAll('[contenteditable]').forEach(el => {
+      el.removeAttribute('contenteditable');
+    });
+    const body = clone.querySelector('body');
+    if (body) body.classList.remove('ai-smart-edit-editing');
+    
+    // Clean up empty style/class attributes
+    clone.querySelectorAll('*').forEach(el => {
+      if (el.hasAttribute('style') && el.getAttribute('style').trim() === '') {
+        el.removeAttribute('style');
+      }
+      if (el.classList && el.classList.length === 0 && el.hasAttribute('class')) {
+        el.removeAttribute('class');
+      }
+    });
+    
+    const htmlContent = '<!DOCTYPE html>\n' + clone.outerHTML;
+    
+    window.parent.postMessage({
+      type: `${NAMESPACE}:PAGE_CONTENT`,
+      payload: {
+        html: htmlContent,
+        route: window.location.pathname
+      }
+    }, '*');
+  }
+
+  // --- Message Handler ---
+  function handleGenericMessage(e) {
+    if (!e.data || !e.data.type) return;
+
+    switch (e.data.type) {
+      case `${NAMESPACE}:PING`:
+        window.parent.postMessage({ type: `${NAMESPACE}:PONG` }, '*');
+        break;
+        
+      case `${NAMESPACE}:ENABLE`:
+        isActive = true;
+        ensureOverlays();
+        document.body.style.cursor = 'crosshair';
+        document.addEventListener('mouseover', handleMouseOver, true);
+        document.addEventListener('click', handleClick, true);
+        break;
+        
+      case `${NAMESPACE}:DISABLE`:
+        isActive = false;
+        if (isEditMode) disableEditMode();
+        if (overlay) overlay.style.display = 'none';
+        if (selectedOverlay) selectedOverlay.style.display = 'none';
+        document.body.style.cursor = '';
+        document.removeEventListener('mouseover', handleMouseOver, true);
+        document.removeEventListener('click', handleClick, true);
+        break;
+        
+      case `${NAMESPACE}:EDIT_MODE_ENABLE`:
+        enableEditMode();
+        break;
+        
+      case `${NAMESPACE}:EDIT_MODE_DISABLE`:
+        disableEditMode();
+        break;
+        
+      case `${NAMESPACE}:UPDATE_IMAGE`:
+        if (e.data.payload) {
+          updateImage(e.data.payload.selector, e.data.payload.src);
+        }
+        break;
+        
+      case `${NAMESPACE}:UPDATE_LINK`:
+        if (e.data.payload) {
+          updateLink(e.data.payload.selector, e.data.payload.href, e.data.payload.text);
+        }
+        break;
+        
+      case `${NAMESPACE}:SAVE_PAGE`:
+        savePage();
+        break;
+    }
+  }
+
+  // --- Initialize ---
   window.addEventListener('message', handleGenericMessage);
 
   // Handle Scroll to detect bottom
@@ -176,17 +404,16 @@
     if (scrollTimeout) cancelAnimationFrame(scrollTimeout);
     
     scrollTimeout = requestAnimationFrame(() => {
-        const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-        const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
-        const clientHeight = window.innerHeight || document.documentElement.clientHeight;
-        
-        // Check if we are within 100px of the bottom
-        const isBottom = (scrollTop + clientHeight) >= (scrollHeight - 100);
-        
-        window.parent.postMessage({
-            type: `${NAMESPACE}:SCROLL_UPDATE`,
-            payload: { isBottom }
-        }, '*');
+      const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+      const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+      const clientHeight = window.innerHeight || document.documentElement.clientHeight;
+      
+      const isBottom = (scrollTop + clientHeight) >= (scrollHeight - 100);
+      
+      window.parent.postMessage({
+        type: `${NAMESPACE}:SCROLL_UPDATE`,
+        payload: { isBottom }
+      }, '*');
     });
   };
   
@@ -197,6 +424,7 @@
   document.addEventListener('keydown', (e) => {
     if (isActive && e.key === 'Escape') {
       isActive = false;
+      if (isEditMode) disableEditMode();
       document.body.style.cursor = '';
       if (overlay) overlay.style.display = 'none';
       if (selectedOverlay) selectedOverlay.style.display = 'none';
@@ -204,5 +432,5 @@
     }
   });
 
-  console.log('[AI Smart Edit] Target script loaded.');
+  console.log('[AI Smart Edit] Target script loaded with edit mode support.');
 })();

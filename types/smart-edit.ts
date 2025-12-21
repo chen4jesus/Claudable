@@ -4,7 +4,32 @@ export type AiSmartEditMessage =
   | { type: 'AI_SMART_EDIT:SELECTED'; payload: ElementContext }
   | { type: 'AI_SMART_EDIT:PING' }
   | { type: 'AI_SMART_EDIT:PONG' }
-  | { type: 'AI_SMART_EDIT:SCROLL_UPDATE'; payload: { isBottom: boolean } };
+  | { type: 'AI_SMART_EDIT:SCROLL_UPDATE'; payload: { isBottom: boolean } }
+  // Edit mode messages
+  | { type: 'AI_SMART_EDIT:EDIT_MODE_ENABLE' }
+  | { type: 'AI_SMART_EDIT:EDIT_MODE_DISABLE' }
+  | { type: 'AI_SMART_EDIT:IMAGE_CLICK'; payload: ImageClickContext }
+  | { type: 'AI_SMART_EDIT:LINK_CLICK'; payload: LinkClickContext }
+  | { type: 'AI_SMART_EDIT:UPDATE_IMAGE'; payload: { selector: string; src: string } }
+  | { type: 'AI_SMART_EDIT:UPDATE_LINK'; payload: { selector: string; href: string; text?: string } }
+  | { type: 'AI_SMART_EDIT:SAVE_PAGE' }
+  | { type: 'AI_SMART_EDIT:PAGE_CONTENT'; payload: { html: string; route: string } }
+  | { type: 'AI_SMART_EDIT:SAVE_RESULT'; payload: { success: boolean; error?: string } };
+
+export interface ImageClickContext {
+  selector: string;
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+}
+
+export interface LinkClickContext {
+  selector: string;
+  href: string;
+  text: string;
+  hasChildren: boolean;
+}
 
 export interface ElementContext {
   tagName: string;
