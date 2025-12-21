@@ -966,6 +966,7 @@ class PreviewManager {
         // Handle Flask projects from git imports
         if (detectedType === 'flask') {
           record('Setting up Flask project from git import...');
+          await scaffoldFlaskApp(projectPath, projectId);
           await enforceFlaskPort(projectPath, record);
         }
         // For other detected types, dependencies will be installed below
@@ -975,6 +976,7 @@ class PreviewManager {
       } else if (project.templateType === 'flask') {
         record(`Bootstrapping Flask app for project ${projectId}`);
         await scaffoldFlaskApp(projectPath, projectId);
+        await enforceFlaskPort(projectPath, record);
       } else {
         record(`Bootstrapping minimal Next.js app for project ${projectId}`);
         await scaffoldBasicNextApp(projectPath, projectId);
@@ -1078,6 +1080,7 @@ class PreviewManager {
             console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
             await scaffoldFlaskApp(projectPath, projectId);
         }
+        await enforceFlaskPort(projectPath, queueLog);
       } else {
         await fs.access(path.join(projectPath, 'package.json'));
       }
@@ -1104,6 +1107,7 @@ class PreviewManager {
          // Should be handled above, but fallback just in case
          console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
          await scaffoldFlaskApp(projectPath, projectId);
+         await enforceFlaskPort(projectPath, queueLog);
       } else {
         console.debug(
           `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
