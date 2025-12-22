@@ -1255,7 +1255,8 @@ class PreviewManager {
     previewProcess.url = resolvedUrl;
 
     // isFlaskProject and effectiveType already determined above
-
+    console.log('isFlaskProject???', isFlaskProject);
+    console.log('effectiveType???', effectiveType);
     if (isFlaskProject) {
        // Enforce dynamic port in source
        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
@@ -1272,7 +1273,8 @@ class PreviewManager {
        
        // Set FLASK_APP to entry point
        env.FLASK_APP = entryPoint;
-       
+       console.log('spawnCommand???', spawnCommand);
+       console.log('spawnArgs???', spawnArgs);
        log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand} ${spawnArgs.join(' ')}`));
     } else {
         // Node/Next logic
