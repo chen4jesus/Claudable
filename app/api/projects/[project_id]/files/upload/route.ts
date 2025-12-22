@@ -42,10 +42,24 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       ? repoPath
       : path.resolve(process.cwd(), repoPath);
 
-    // Determine target directory (default: public/images or images)
-    let targetDir = targetPath || 'public/images';
-    // Clean up the path
+    // Determine project type for path mapping
+    const isFlask = project.templateType === 'flask' || (project.templateType === 'git-import' && (await fs.access(path.join(projectRoot, 'wsgi.py')).then(() => true).catch(() => false)));
+
+    // Determine target directory (default: public/images or static/images for Flask)
+    let targetDir = targetPath || (isFlask ? 'app/static/images' : 'public/images');
+    
+    // Clean up the target path
     targetDir = targetDir.replace(/\\/g, '/').replace(/^\.?\/?/, '').replace(/\/+$/, '');
+    
+    // If Flask, and it's trying to go to 'public', redirect to standard static
+    if (isFlask && targetDir.startsWith('public')) {
+      const appStaticExists = await fs.access(path.join(projectRoot, 'app', 'static')).then(() => true).catch(() => false);
+      if (appStaticExists) {
+        targetDir = targetDir.replace(/^public/, 'app/static');
+      } else {
+        targetDir = targetDir.replace(/^public/, 'static');
+      }
+    }
     
     const absoluteTargetDir = path.resolve(projectRoot, targetDir);
     
@@ -74,13 +88,22 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     await fs.writeFile(absoluteFilePath, buffer);
 
     // Calculate the URL path relative to project root
-    const relativePath = path.relative(projectRoot, absoluteFilePath).replace(/\\/g, '/');
+    // Normalize to forward slashes for URL
+    const relativePath = path.relative(projectRoot, absoluteFilePath).split(path.sep).join('/');
     
     // For static projects, the URL is typically relative to the root
     // For Next.js projects with public folder, it's relative to public
+    // For Flask, it's relative to static (usually /static/...)
     let urlPath = '/' + relativePath;
+    
     if (relativePath.startsWith('public/')) {
       urlPath = '/' + relativePath.substring(7); // Remove 'public/' prefix
+    } else if (isFlask) {
+      if (relativePath.startsWith('app/static/')) {
+        urlPath = '/static/' + relativePath.substring(11);
+      } else if (relativePath.startsWith('static/')) {
+        urlPath = '/static/' + relativePath.substring(7);
+      }
     }
 
     console.log(`[Upload] Saved file to: ${absoluteFilePath}, URL: ${urlPath}`);

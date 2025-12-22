@@ -3518,6 +3518,7 @@ const persistProjectPreferences = useCallback(
         targetIframeRef={iframeRef} 
         onElementSelected={handleSmartEditSelection} 
         projectId={projectId}
+        previewUrl={previewUrl}
       />
 
       <SmartEditModal

@@ -6,9 +6,10 @@ interface AiSmartEditToolbarProps {
   targetIframeRef: React.RefObject<HTMLIFrameElement | null>;
   onElementSelected?: (context: ElementContext) => void;
   projectId?: string;
+  previewUrl?: string | null;
 }
 
-export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, projectId }: AiSmartEditToolbarProps) {
+export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, projectId, previewUrl }: AiSmartEditToolbarProps) {
   const [isActive, setIsActive] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [lastSelected, setLastSelected] = useState<ElementContext | null>(null);
@@ -138,7 +139,9 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
       const result = await response.json();
 
       if (result.success) {
-        setImageUrl(result.data.url);
+        // Construct the full URL if it's relative
+        const uploadedUrl = result.data.url;
+        setImageUrl(uploadedUrl);
         showNotification('success', `Image uploaded: ${result.data.filename}`);
       } else {
         showNotification('error', `Upload failed: ${result.error}`);
@@ -391,7 +394,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Preview</label>
                 <img 
-                  src={imageUrl} 
+                  src={imageUrl.startsWith('/') && previewUrl ? `${previewUrl.replace(/\/$/, '')}${imageUrl}` : imageUrl} 
                   alt="Preview" 
                   className="max-h-40 rounded border border-gray-200"
                   onError={(e) => {
