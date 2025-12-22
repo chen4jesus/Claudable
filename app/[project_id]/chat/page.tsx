@@ -88,6 +88,9 @@ interface TreeViewProps {
   onLoadFolder: (path: string) => Promise<void>;
   onDelete?: (path: string, type: 'file' | 'dir') => void;
   onRename?: (path: string, type: 'file' | 'dir') => void;
+  onMove?: (source: string, target: string) => void;
+  level: number;
+  parentPath?: string;
   getFileIcon: (entry: Entry) => React.ReactElement;
   dragOverPath: string | null;
   setDragOverPath: (path: string | null) => void;
