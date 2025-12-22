@@ -88,13 +88,12 @@ interface TreeViewProps {
   onLoadFolder: (path: string) => Promise<void>;
   onDelete?: (path: string, type: 'file' | 'dir') => void;
   onRename?: (path: string, type: 'file' | 'dir') => void;
-  onMove?: (oldPath: string, newParentPath: string) => void;
-  level: number;
-  parentPath?: string;
   getFileIcon: (entry: Entry) => React.ReactElement;
+  dragOverPath: string | null;
+  setDragOverPath: (path: string | null) => void;
 }
 
-function TreeView({ entries, selectedFile, expandedFolders, folderContents, onToggleFolder, onSelectFile, onLoadFolder, onDelete, onRename, onMove, level, parentPath = '', getFileIcon }: TreeViewProps) {
+function TreeView({ entries, selectedFile, expandedFolders, folderContents, onToggleFolder, onSelectFile, onLoadFolder, onDelete, onRename, onMove, level, parentPath = '', getFileIcon, dragOverPath, setDragOverPath }: TreeViewProps) {
   // Ensure entries is an array
   if (!entries || !Array.isArray(entries)) {
     return null;
@@ -108,8 +107,6 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
     // Then alphabetical
     return a.path.localeCompare(b.path);
   });
-
-  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
 
   return (
     <>
@@ -137,36 +134,38 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
                 e.dataTransfer.effectAllowed = 'move';
               }}
               onDragOver={(e) => {
-                if (entry.type === 'dir') {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                }
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'move';
               }}
               onDragEnter={(e) => {
-                if (entry.type === 'dir') {
-                  setDragOverPath(fullPath);
-                }
+                e.stopPropagation();
+                setDragOverPath(fullPath);
               }}
               onDragLeave={(e) => {
-                if (entry.type === 'dir') {
-                  setDragOverPath(null);
-                }
+                e.stopPropagation();
+                setDragOverPath(null);
               }}
               onDrop={(e) => {
-                if (entry.type === 'dir') {
-                  e.preventDefault();
-                  setDragOverPath(null);
-                  const sourcePath = e.dataTransfer.getData('text/plain');
-                  if (sourcePath && sourcePath !== fullPath && !sourcePath.startsWith(fullPath + '/')) {
-                    onMove?.(sourcePath, fullPath);
-                  }
-                }
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverPath(null);
+                const sourcePath = e.dataTransfer.getData('text/plain');
+                if (!sourcePath || sourcePath === fullPath || sourcePath.startsWith(fullPath + '/')) return;
+                
+                // If dropping on a folder, use it as parent.
+                // If dropping on a file, use its parent path.
+                const targetParent = entry.type === 'dir' 
+                  ? fullPath 
+                  : (fullPath.split('/').slice(0, -1).join('/') || '.');
+                
+                onMove?.(sourcePath, targetParent);
               }}
-              className={`group flex items-center h-[24px] px-2 cursor-pointer transition-colors ${
+              className={`group relative flex items-center h-[24px] px-2 cursor-pointer transition-colors ${
                 selectedFile === fullPath 
                   ? 'bg-blue-100' 
                   : dragOverPath === fullPath
-                  ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+                  ? 'bg-blue-50'
                   : 'hover:bg-gray-100'
               }`}
               style={{ paddingLeft: `${8 + indent}px` }}
@@ -182,6 +181,9 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
                 }
               }}
             >
+              {dragOverPath === fullPath && (
+                <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)] z-10" />
+              )}
               {/* Chevron for folders */}
               <div className="w-4 flex items-center justify-center mr-0.5">
                 {entry.type === 'dir' && (
@@ -250,6 +252,8 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
                 level={level + 1}
                 parentPath={fullPath}
                 getFileIcon={getFileIcon}
+                dragOverPath={dragOverPath}
+                setDragOverPath={setDragOverPath}
               />
             )}
           </div>
@@ -281,6 +285,7 @@ export default function ChatPage() {
   const [content, setContent] = useState<string>('');
   const [editedContent, setEditedContent] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   
   // Smart Edit State
   const [isSmartEditModalOpen, setIsSmartEditModalOpen] = useState(false);
@@ -3156,7 +3161,34 @@ const persistProjectPreferences = useCallback(
                 {/* Left Sidebar - File Explorer (VS Code style) */}
                 <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
                   {/* File Tree */}
-                  <div className="flex-1 overflow-y-auto bg-gray-50 custom-scrollbar">
+                  <div 
+                    className={`flex-1 overflow-y-auto bg-gray-50 custom-scrollbar transition-all ${
+                      dragOverPath === 'root' ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/10' : ''
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDragEnter={(e) => {
+                      // Only highlight as root if we're not over a specific entry
+                      if (e.target === e.currentTarget) {
+                        setDragOverPath('root');
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.target === e.currentTarget) {
+                        setDragOverPath(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOverPath(null);
+                      const sourcePath = e.dataTransfer.getData('text/plain');
+                      if (sourcePath) {
+                        handleMovePath(sourcePath, '.');
+                      }
+                    }}
+                  >
                     {!tree || tree.length === 0 ? (
                       <div className="px-3 py-8 text-center text-[11px] text-gray-600 select-none">
                         No files found
@@ -3176,6 +3208,8 @@ const persistProjectPreferences = useCallback(
                         level={0}
                         parentPath=""
                         getFileIcon={getFileIcon}
+                        dragOverPath={dragOverPath}
+                        setDragOverPath={setDragOverPath}
                       />
                     )}
                   </div>
