@@ -1512,7 +1512,7 @@ pytest>=7.0.0
 FLASK_DEBUG=true
 FLASK_CONFIG=development
 SECRET_KEY=dev-secret-key-change-in-production
-DATABASE_URL=sqlite:///app.db
+DATABASE_URL=sqlite:///instance/app.db
 `
   );
 
@@ -1595,7 +1595,7 @@ services:
       - FLASK_APP=wsgi.py
       - FLASK_DEBUG=false
       - SECRET_KEY=\${SECRET_KEY:-production-secret-key}
-      - DATABASE_URL=\${DATABASE_URL:-sqlite:///app.db}
+      - DATABASE_URL=\${DATABASE_URL:-sqlite:///instance/app.db}
     volumes:
       - ./instance:/app/instance
     restart: unless-stopped
