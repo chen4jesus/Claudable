@@ -107,7 +107,7 @@ export async function cleanupSmartEditScript(projectPath: string, log: (msg: str
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          if (['node_modules', '.git', '.next', 'venv', '__pycache__', 'backups'].includes(entry.name)) continue;
+          if (['node_modules', '.git', '.next', 'venv', '__pycache__', 'backups', '.claude', '.claudable'].includes(entry.name)) continue;
           await scanRecursively(fullPath);
         } else if (entry.isFile() && entry.name.endsWith('.html')) {
           await removeScriptFromHtmlFile(fullPath, log);
@@ -159,8 +159,10 @@ export function tagContentWithSourceIds(content: string, relPath: string): strin
   const tagRegex = /<([a-zA-Z0-9]+)([^>]*?)(?=\/?>)/g;
   
   return content.replace(tagRegex, (match, tagName, attrs) => {
+    const lowerTagName = tagName.toLowerCase();
     // Skip if already has an ID or is a system tag we don't want to edit
-    if (attrs.includes('data-ai-src-id') || ['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
+    if (attrs.includes('data-ai-src-id') || 
+        ['script', 'style', 'link', 'meta', 'br', 'hr', 'base', 'noscript', 'template', 'title', 'head', 'html'].includes(lowerTagName)) {
       return match;
     }
     
@@ -170,10 +172,82 @@ export function tagContentWithSourceIds(content: string, relPath: string): strin
 }
 
 /**
- * Apply granular changes (from CSS selectors or Source-IDs) to source content
+ * Extract raw source fragment for a given srcId
  */
-export function applyGranularChanges(content: string, changes: any[]): string {
-  let result = content;
+export async function getSourceFragmentBySrcId(projectPath: string, srcId: string): Promise<string> {
+  const [relPath, indexStr] = srcId.split('::');
+  if (indexStr === undefined) throw new Error(`Invalid srcId format: ${srcId}`);
+  const targetIndex = parseInt(indexStr, 10);
+  const filePath = path.join(projectPath, relPath);
+  const baselinePath = path.join(projectPath, '.claudable', 'baselines', relPath);
+  
+  let content: string;
+  try {
+    content = await fs.readFile(baselinePath, 'utf8');
+  } catch {
+    content = await fs.readFile(filePath, 'utf8');
+  }
+  
+  let counter = 0;
+  
+  // Mirror the tagRegex used in tagContentWithSourceIds
+  const tagRegex = /<([a-zA-Z0-9]+)([^>]*?)(?=\/?>)/g;
+  let match;
+  
+  while ((match = tagRegex.exec(content)) !== null) {
+    const tagName = match[1];
+    const attrs = match[2];
+    
+    // Skip system tags same as tagContentWithSourceIds
+    if (attrs.includes('data-ai-src-id') || ['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
+      continue;
+    }
+    
+    if (counter === targetIndex) {
+      const startIndexInContent = match.index;
+      const openingTagFull = match[0];
+      const isSelfClosing = content[startIndexInContent + openingTagFull.length] === '/' || content[startIndexInContent + openingTagFull.length + 1] === '/>';
+      
+      if (isSelfClosing) {
+        const endOfTag = content.indexOf('>', startIndexInContent) + 1;
+        return content.substring(startIndexInContent, endOfTag);
+      }
+
+      // Balance tags to find the end
+      let balance = 1;
+      const searchRegex = new RegExp(`(<${tagName}\\b[^>]*>)|(</${tagName}>)`, 'gi');
+      searchRegex.lastIndex = startIndexInContent + openingTagFull.length;
+      
+      let smatch;
+      while ((smatch = searchRegex.exec(content)) !== null) {
+        if (smatch[1]) {
+          if (!smatch[1].endsWith('/>')) balance++;
+        } else if (smatch[2]) {
+          balance--;
+        }
+        
+        if (balance === 0) {
+          return content.substring(startIndexInContent, smatch.index + smatch[0].length);
+        }
+      }
+      // Fallback
+      return content.substring(startIndexInContent, content.indexOf('>', startIndexInContent) + 1);
+    }
+    
+    counter++;
+  }
+  
+  throw new Error(`Source fragment not found for srcId: ${srcId}`);
+}
+
+/**
+ * Apply granular changes (from CSS selectors or Source-IDs) to source content.
+ * This function now performs "In-Memory Tagging" to keep source files clean.
+ */
+export function applyGranularChanges(content: string, changes: any[], relPath: string): string {
+  // 1. Tag the content in memory so that srcId matches work
+  let taggedContent = tagContentWithSourceIds(content, relPath);
+  let result = taggedContent;
 
   for (const change of changes) {
     const { selector, srcId, type, value, attrName } = change;
@@ -182,7 +256,7 @@ export function applyGranularChanges(content: string, changes: any[]): string {
     if (srcId) {
       try {
         if (type === 'html') {
-          result = updateElementHtmlBySrcId(result, srcId, value);
+          result = updateElementHtmlBySrcId(result, srcId, value, change.originalHTML);
         } else if (type === 'attr' && attrName) {
           result = updateElementAttrBySrcId(result, srcId, attrName, value);
         }
@@ -192,7 +266,7 @@ export function applyGranularChanges(content: string, changes: any[]): string {
       }
     }
 
-    // Fallback to selector-based matching (less precise)
+    // Fallback to selector-based matching
     if (selector) {
       try {
         if (type === 'html') {
@@ -206,19 +280,190 @@ export function applyGranularChanges(content: string, changes: any[]): string {
     }
   }
 
-  return result;
+  // 2. Strip tags before returning to ensure the source file stays clean
+  return cleanupSmartEditContent(result);
 }
 
-function updateElementHtmlBySrcId(content: string, srcId: string, newHtml: string): string {
-  // Escape special characters in srcId for regex (though it should be mostly alphanumeric + / + ::)
-  const escapedId = srcId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(<[a-zA-Z0-9]+[^>]*\\bdata-ai-src-id=["']${escapedId}["'][^>]*>)([\\s\\S]*?)(<\\/([a-zA-Z0-9]+)>)`, 'i');
-  const match = content.match(regex);
+/**
+ * Performs a 3-way merge between original source, original rendered, and updated rendered HTML.
+ * The goal is to preserve dynamic template tags (e.g. {{ var }}) while applying static text changes.
+ */
+export function performThreeWayMerge(source: string, originalRendered: string, finalRendered: string): string {
+  // If no source or original rendered, we can't do a merge, just return final
+  if (!source || !originalRendered) return finalRendered;
   
-  if (match) {
-    return content.replace(regex, `$1${newHtml}$3`);
+  // If rendered hasn't changed, return source
+  if (originalRendered === finalRendered) return source;
+  
+  // Heuristic: If source doesn't contain template tags, just return final (fully static)
+  const templatePattern = /\{\{.*?\}\}|\{%.*?%\}|<%.*?%>|\$\{.*?\}/;
+  if (!templatePattern.test(source)) return finalRendered;
+
+  // Find the largest common prefix and suffix between original and final.
+  let prefixLen = 0;
+  while (prefixLen < originalRendered.length && 
+         prefixLen < finalRendered.length && 
+         originalRendered[prefixLen] === finalRendered[prefixLen]) {
+    prefixLen++;
   }
-  throw new Error(`Element with data-ai-src-id="${srcId}" not found for HTML update`);
+  
+  let suffixLen = 0;
+  while (suffixLen < (originalRendered.length - prefixLen) && 
+         suffixLen < (finalRendered.length - prefixLen) && 
+         originalRendered[originalRendered.length - 1 - suffixLen] === finalRendered[finalRendered.length - 1 - suffixLen]) {
+    suffixLen++;
+  }
+  
+  const originalMiddle = originalRendered.substring(prefixLen, originalRendered.length - suffixLen);
+  const finalMiddle = finalRendered.substring(prefixLen, finalRendered.length - suffixLen);
+  
+  if (originalMiddle === finalMiddle) return source; // No real change
+
+  // Pure insertion logic
+  if (originalMiddle === "") {
+    // We need both a unique prefix and a unique suffix to safely identify the insertion point
+    const sourcePrefix = originalRendered.substring(Math.max(0, prefixLen - 50), prefixLen);
+    const sourceSuffix = originalRendered.substring(originalRendered.length - suffixLen, originalRendered.length - suffixLen + 50);
+
+    // Search for this specific combination: [prefix][source_content][suffix]
+    // Since originalMiddle is "", in the source we expect [prefix][suffix] with POSSIBLY template tags between them.
+    const sPrefixIdx = source.indexOf(sourcePrefix);
+    const sSuffixIdx = source.lastIndexOf(sourceSuffix);
+
+    if (sPrefixIdx !== -1 && sSuffixIdx !== -1 && sSuffixIdx >= sPrefixIdx + sourcePrefix.length) {
+      // Insertion point is at the end of the prefix
+      const insertionPoint = sPrefixIdx + sourcePrefix.length;
+      return source.substring(0, insertionPoint) + finalMiddle + source.substring(insertionPoint);
+    }
+  }
+
+  const sourceIndex = source.indexOf(originalMiddle);
+  if (sourceIndex !== -1) {
+    return source.substring(0, sourceIndex) + finalMiddle + source.substring(sourceIndex + originalMiddle.length);
+  }
+
+  // ADVANCED HEURISTIC: If exact middle match fails, try to "fuzzy" match it 
+  // by identifying parts of originalMiddle that are definitely static.
+  // We split originalMiddle by what looks like dynamic content in Source? 
+  // No, we can't easily do that since originalMiddle IS rendered (static).
+  
+  // Try matching prefix and suffix individually in Source.
+  const sourcePrefix = originalRendered.substring(0, prefixLen);
+  const sourceSuffix = originalRendered.substring(originalRendered.length - suffixLen);
+  
+  // We search for the prefix and suffix in source, allowing template tags in between.
+  const sPrefixIdx = source.indexOf(sourcePrefix);
+  const sSuffixIdx = source.lastIndexOf(sourceSuffix);
+  
+  if (sPrefixIdx !== -1 && sSuffixIdx !== -1 && sPrefixIdx < sSuffixIdx) {
+     // We found the boundaries!
+     // Now, what's between sPrefixIdx + sourcePrefix.length and sSuffixIdx in source?
+     const currentSourceMiddle = source.substring(sPrefixIdx + sourcePrefix.length, sSuffixIdx);
+     
+     // If the currentSourceMiddle contains template tags, we must be careful.
+     // If the user's change doesn't overlap with where the template tags likely are, we can try to preserve them.
+     // But a safer "Greater" approach: if there are template tags, we only replace the static text.
+     
+     // For now, let's implement a "Tag-Aware Replace":
+     // If the middle has tags, we try to preserve them by assuming they are placeholders.
+     // This is complex. A simpler way: if the change is a complete overwrite of the middle,
+     // and it's static, we might have to lose the tags IF they were part of what was replaced.
+     
+     // However, usually the user edits the text AROUND the tags.
+     // Let's try to find the template tags in currentSourceMiddle and put them back.
+     const tags = [];
+     let tagMatch;
+     const tagRegex = /\{\{.*?\}\}|\{%.*?%\}|<%.*?%>|\$\{.*?\}/g;
+     while ((tagMatch = tagRegex.exec(currentSourceMiddle)) !== null) {
+       tags.push({ content: tagMatch[0], index: tagMatch.index });
+     }
+     
+     if (tags.length > 0) {
+       // We have tags! We should try to merge them into finalMiddle.
+       // This is the "Holy Grail" of template preservation.
+       // Heuristic: If the originalMiddle had some text that we can correlate to finalMiddle, 
+       // we can position the tags.
+       
+       // Simplified: just return the source but with the text modifications applied to the static parts.
+       // For now, let's do a safer fallback: if we found the boundaries and there are tags,
+       // and we can't do a perfect merge, we'll try to keep the tags and just swap the text if possible.
+     }
+  }
+  
+  // Final fallback: If we can't find the insertion point, we MUST NOT prepend or guess.
+  // Returning source means "Discard this change" which is safer than corruption.
+  return source;
+}
+
+function updateElementHtmlBySrcId(content: string, srcId: string, newHtml: string, originalHtml?: string): string {
+  // Escape special characters in srcId for regex
+  const escapedId = srcId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  
+  // 1. Find the opening tag with the specific srcId
+  // We capture the tag name so we can find the matching closing tag
+  const openTagRegex = new RegExp(`(<([a-zA-Z0-9]+)[^>]*\\bdata-ai-src-id=["']${escapedId}["'][^>]*>)`, 'i');
+  const openMatch = content.match(openTagRegex);
+  
+  if (!openMatch) {
+    throw new Error(`Element with data-ai-src-id="${srcId}" not found for HTML update`);
+  }
+  
+  const openingTag = openMatch[1];
+  const tagName = openMatch[2];
+  const startIndex = openMatch.index! + openingTag.length;
+  
+  // 2. Find the matching closing tag with balancing
+  // We need to handle nested tags of the same name
+  let balance = 1;
+  const searchRegex = new RegExp(`(<${tagName}\\b[^>]*>)|(</${tagName}>)`, 'gi');
+  searchRegex.lastIndex = startIndex;
+  
+  let match;
+  let closingTagMatch = null;
+  
+  while ((match = searchRegex.exec(content)) !== null) {
+    if (match[1]) {
+      // Found another opening tag of the same name
+      // Skip self-closing tags (e.g., <div />) as they don't increment balance
+      if (!match[1].endsWith('/>') && !match[1].endsWith('/ >')) {
+        balance++;
+      }
+    } else if (match[2]) {
+      // Found a closing tag of the same name
+      balance--;
+    }
+    
+    if (balance === 0) {
+      closingTagMatch = match;
+      break;
+    }
+  }
+  
+  if (closingTagMatch) {
+    const preContent = content.substring(0, openMatch.index!);
+    const postContent = content.substring(closingTagMatch.index! + closingTagMatch[0].length);
+    
+    // Original raw source for this tag
+    const sourceFragment = content.substring(openMatch.index!, closingTagMatch.index! + closingTagMatch[0].length);
+    
+    // Extract inner content from source fragment
+    const sourceInner = sourceFragment.substring(openingTag.length, sourceFragment.length - closingTagMatch[0].length);
+    
+    let replacementInner = newHtml;
+    
+    if (originalHtml) {
+       // Perform 3-way merge to preserve template tags
+       replacementInner = performThreeWayMerge(sourceInner, originalHtml, newHtml);
+    }
+    
+    const replacement = openingTag + replacementInner + closingTagMatch[0];
+    return preContent + replacement + postContent;
+  }
+  
+  // Fallback: If balancing fails (e.g., malformed HTML), use a simple name-aware regex
+  const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const fallbackRegex = new RegExp(`(${openTagRegex.source})([\\s\\S]*?)(<\\/${escapedTagName}>)`, 'i');
+  return content.replace(fallbackRegex, `$1${newHtml}$3`);
 }
 
 function updateElementAttrBySrcId(content: string, srcId: string, attrName: string, attrValue: string): string {

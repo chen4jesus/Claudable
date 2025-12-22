@@ -16,6 +16,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
   const [isAtBottom, setIsAtBottom] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [sourceBaselines, setSourceBaselines] = useState<Record<string, string>>({});
   
   // Modal states
   const [imageModal, setImageModal] = useState<ImageClickContext | null>(null);
@@ -162,6 +163,31 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
           setLastSelected(data.payload);
           if (onElementSelected) {
             onElementSelected(data.payload);
+          }
+
+          // Fetch source fragment for baseline if not already cached
+          if (projectId && data.payload.srcId && !sourceBaselines[data.payload.srcId]) {
+            try {
+              const res = await fetch(`/api/projects/${projectId}/preview/fragment?srcId=${encodeURIComponent(data.payload.srcId)}`);
+              const result = await res.json();
+              if (result.success) {
+                const fragment = result.data.fragment;
+                setSourceBaselines(prev => ({ ...prev, [data.payload.srcId!]: fragment }));
+                // Send baseline to iframe for client-side diffing
+                sendMessage('AI_SMART_EDIT:SET_SOURCE_BASELINE', {
+                  srcId: data.payload.srcId,
+                  fragment
+                });
+              }
+            } catch (err) {
+              console.error('[Toolbar] Failed to fetch source fragment:', err);
+            }
+          } else if (data.payload.srcId && sourceBaselines[data.payload.srcId]) {
+            // Already cached, just sync
+            sendMessage('AI_SMART_EDIT:SET_SOURCE_BASELINE', {
+              srcId: data.payload.srcId,
+              fragment: sourceBaselines[data.payload.srcId]
+            });
           }
         } else if (data.type === 'AI_SMART_EDIT:DISABLE') {
           setIsActive(false);

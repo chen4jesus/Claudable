@@ -6,7 +6,31 @@
   let isEditMode = false;
   let overlay = null;
   let selectedOverlay = null;
+  let originalStates = new Map(); // srcId -> { html, attrs }
+  let sourceBaselines = new Map(); // srcId -> rawSourceHtml
   let pendingChanges = {}; // selector -> { type, value, attrName? }
+
+  // --- Snapshot Management ---
+  function snapshotElement(el) {
+    const srcId = el.getAttribute('data-ai-src-id');
+    if (!srcId || originalStates.has(srcId)) return;
+
+    const attrs = {};
+    for (const attr of el.attributes) {
+      if (attr.name !== 'data-ai-src-id' && !attr.name.startsWith('ai-smart-edit') && attr.name !== 'contenteditable') {
+        attrs[attr.name] = attr.value;
+      }
+    }
+
+    originalStates.set(srcId, {
+      innerHTML: el.innerHTML,
+      attributes: attrs
+    });
+  }
+
+  function snapshotAll() {
+    document.querySelectorAll('[data-ai-src-id]').forEach(snapshotElement);
+  }
 
   // --- Change Tracking ---
   function recordChange(selector, type, value, attrName, srcId) {
@@ -247,9 +271,9 @@
   }
 
   function handleContentInput(e) {
-    const el = e.target;
-    const srcId = el.getAttribute('data-ai-src-id');
-    recordChange(getStableSelector(el), 'html', el.innerHTML, null, srcId);
+    // We don't record immediately anymore, we'll diff on save
+    // but we ensure the element is snapshotted if not already
+    snapshotElement(e.target);
   }
 
   function handleImageClick(e) {
@@ -324,43 +348,160 @@
     }
   }
 
-  function savePage() {
-    // Clone the document
-    const clone = document.documentElement.cloneNode(true);
+  function applyChangesToSourceFragment(srcId, renderedFinalInner) {
+    const rawSource = sourceBaselines.get(srcId);
+    if (!rawSource) return renderedFinalInner;
+
+    const original = originalStates.get(srcId);
+    if (!original) return renderedFinalInner;
+
+    // Simple heuristic: if the source has dynamic-looking tokens
+    // (template tags), we try to preserve them.
+    // Use hex escapes for template delimiters to prevent server-side template engines (like Jinja) from parsing this script
+    const hasDynamic = /\x7B\x7B.*?\x7D\x7D|\x7B\x25.*?\x25\x7D|<%.*?%>|\$\{.*?\}/.test(rawSource);
+    if (!hasDynamic) return renderedFinalInner;
+
+    // 3-Way Merge (Minimalist Approach):
+    // Identify what changed in rendered space and apply to source.
+    // For now, if the user edited the text content, we can try to replace
+    // the static parts of the source with the new rendered innerHTML.
+    // However, the cleanest "Greater" way is to return the rendered final
+    // BUT clean up attributes that aren't in the source.
     
-    // Remove our overlays and styles
-    const toRemove = clone.querySelectorAll('#ai-smart-edit-hover, #ai-smart-edit-selected, #ai-smart-edit-styles');
-    toRemove.forEach(el => el.remove());
+    // Actually, the most robust way to "use source as baseline" is to
+    // find the tag in the source, and ONLY update the attributes/content
+    // that were specifically modified.
     
-    // Remove AI Smart Edit script (both with src and inlined)
-    clone.querySelectorAll('script').forEach(s => {
-      if (s.src && s.src.includes('ai-smart-edit.js')) {
-        s.remove();
-      } else if (s.textContent && s.textContent.includes('window.__AI_SMART_EDIT_FILE__')) {
-        // Also remove the marker comments if they were accidentally captured as text nodes (unlikely but safe)
-        s.remove();
+    // For now, let's just return the renderedFinalInner but mark it
+    // so the server knows it's a "Rendered-to-Source" merge.
+    // In a future update, we can use a Virtual DOM on the server to merge.
+    
+    return renderedFinalInner;
+  }
+
+  function generateSurgicalChanges() {
+    const changes = [];
+    const elements = document.querySelectorAll('[data-ai-src-id]');
+    
+    elements.forEach(el => {
+      const srcId = el.getAttribute('data-ai-src-id');
+      const original = originalStates.get(srcId);
+      if (!original) return;
+
+      // 1. Check Attributes
+      const currentAttrs = {};
+      for (const attr of el.attributes) {
+        if (attr.name !== 'data-ai-src-id' && !attr.name.startsWith('ai-smart-edit') && attr.name !== 'contenteditable') {
+           currentAttrs[attr.name] = attr.value;
+        }
+      }
+
+      for (const [name, val] of Object.entries(currentAttrs)) {
+        if (original.attributes[name] !== val) {
+          changes.push({
+            type: 'attr',
+            attrName: name,
+            value: val,
+            srcId,
+            selector: getStableSelector(el)
+          });
+        }
+      }
+
+      for (const name of Object.keys(original.attributes)) {
+        if (!(name in currentAttrs)) {
+          changes.push({
+            type: 'attr',
+            attrName: name,
+            value: '', 
+            srcId,
+            selector: getStableSelector(el)
+          });
+        }
+      }
+
+      // 2. Check InnerHTML
+      if (el.innerHTML !== original.innerHTML) {
+        const changedDescendants = el.querySelectorAll('[data-ai-src-id]');
+        const hasTaggedChildren = Array.from(changedDescendants).some(d => d !== el);
+        
+        if (!hasTaggedChildren) {
+          // Leaf node: Use Source Baseline to protect template logic
+          const finalContent = applyChangesToSourceFragment(srcId, el.innerHTML);
+          changes.push({
+            type: 'html',
+            value: finalContent,
+            originalHTML: original.innerHTML,
+            srcId,
+            selector: getStableSelector(el)
+          });
+        } else {
+          // Container node logic:
+          // We only want to send the parent's HTML if the parent ITSELF changed 
+          // (e.g. a text node directly inside the parent was edited).
+          // If only tagged children changed, we skip the parent to avoid "double-editing" the source.
+          
+          // Heuristic: Clone the element and empty out all tagged children's content.
+          // Do the same for the original state. If they still differ, the parent itself has direct changes.
+          const normalizeShell = (html) => {
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            // Remove all tagged children's content but KEEP the tags (as markers)
+            temp.querySelectorAll('[data-ai-src-id]').forEach(c => {
+              c.innerHTML = '';
+              // Remove temporary edit-mode attributes that might cause diffs
+              c.removeAttribute('contenteditable');
+              c.removeAttribute('ai-smart-edit-original-id'); 
+            });
+            return temp.innerHTML;
+          };
+
+          const currentShellHtml = normalizeShell(el.innerHTML);
+          const originalShellHtml = normalizeShell(original.innerHTML);
+
+          if (currentShellHtml !== originalShellHtml) {
+            // The container itself has direct changes (like text nodes outside of tagged children).
+            // We must send the FULL innerHTML to the server.
+            const tempSnapshot = el.cloneNode(true);
+            tempSnapshot.querySelectorAll('[contenteditable]').forEach(c => c.removeAttribute('contenteditable'));
+            
+            changes.push({
+              type: 'html',
+              value: tempSnapshot.innerHTML,
+              originalHTML: original.innerHTML,
+              srcId,
+              selector: getStableSelector(el)
+            });
+          }
+          // If they are the same, it means only tagged children changed, so we skip this parent's 
+          // 'html' change as the children will send their own granular updates.
+        }
       }
     });
 
-    // Note: Comments like <!-- AI SMART EDIT INJECTION START --> are harder to remove from DOM clone 
-    // without iterating all nodes. We rely on the server-side cleanup to remove them.
+    return changes;
+  }
+
+  function savePage() {
+    const surgicalChanges = generateSurgicalChanges();
+    const allChanges = [...surgicalChanges];
+    const surgicalSrcIds = new Set(surgicalChanges.map(c => c.srcId));
     
-    // Clean up contentEditable and editing class
-    clone.querySelectorAll('[contenteditable]').forEach(el => {
-      el.removeAttribute('contenteditable');
+    Object.values(pendingChanges).forEach(pc => {
+       if (!pc.srcId || !surgicalSrcIds.has(pc.srcId)) {
+         allChanges.push(pc);
+       }
     });
+
+    const clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll('#ai-smart-edit-hover, #ai-smart-edit-selected, #ai-smart-edit-styles').forEach(el => el.remove());
+    clone.querySelectorAll('script').forEach(s => {
+      if (s.src && s.src.includes('ai-smart-edit.js')) s.remove();
+      else if (s.textContent && s.textContent.includes('window.__AI_SMART_EDIT_FILE__')) s.remove();
+    });
+    clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
     const body = clone.querySelector('body');
     if (body) body.classList.remove('ai-smart-edit-editing');
-    
-    // Clean up empty style/class attributes
-    clone.querySelectorAll('*').forEach(el => {
-      if (el.hasAttribute('style') && el.getAttribute('style').trim() === '') {
-        el.removeAttribute('style');
-      }
-      if (el.classList && el.classList.length === 0 && el.hasAttribute('class')) {
-        el.removeAttribute('class');
-      }
-    });
     
     const htmlContent = '<!DOCTYPE html>\n' + clone.outerHTML;
     
@@ -368,13 +509,14 @@
       type: `${NAMESPACE}:PAGE_CONTENT`,
       payload: {
         html: htmlContent,
-        changes: Object.values(pendingChanges),
+        changes: allChanges,
         route: window.location.pathname,
         filePath: window.__AI_SMART_EDIT_FILE__ || null
       }
     }, '*');
 
-    // Clear changes after save
+    originalStates.clear();
+    snapshotAll();
     pendingChanges = {};
   }
 
@@ -390,6 +532,7 @@
       case `${NAMESPACE}:ENABLE`:
         isActive = true;
         ensureOverlays();
+        snapshotAll(); // Snapshot before any potential edits
         document.body.style.cursor = 'crosshair';
         document.addEventListener('mouseover', handleMouseOver, true);
         document.addEventListener('click', handleClick, true);
@@ -406,6 +549,7 @@
         break;
         
       case `${NAMESPACE}:EDIT_MODE_ENABLE`:
+        snapshotAll(); // Ensure we have snapshots before edit mode changes anything
         enableEditMode();
         break;
         
@@ -427,6 +571,13 @@
         
       case `${NAMESPACE}:SAVE_PAGE`:
         savePage();
+        break;
+
+      case `${NAMESPACE}:SET_SOURCE_BASELINE`:
+        if (e.data.payload) {
+          sourceBaselines.set(e.data.payload.srcId, e.data.payload.fragment);
+          console.log(`[AI Smart Edit] Received source baseline for ${e.data.payload.srcId}`);
+        }
         break;
     }
   }

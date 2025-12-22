@@ -17,6 +17,8 @@ const EXCLUDED_DIRECTORIES = new Set([
   '.vercel',
   '.idea',
   '.vscode',
+  '.claude',
+  '.claudable',
 ]);
 
 const EXCLUDED_FILES = new Set(['.DS_Store']);

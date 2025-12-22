@@ -1097,6 +1097,9 @@ class PreviewManager {
       NEXT_PUBLIC_APP_URL: initialUrl,
     };
 
+    // Create Shadow Baselines (Original Source Snapshot)
+    await this.createProjectBaselines(projectPath, (msg) => console.log(msg));
+
     const previewProcess: PreviewProcess = {
       process: null,
       port: preferredPort,
@@ -1312,12 +1315,7 @@ class PreviewManager {
          spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
     }
 
-    // Inject Smart Edit Script
-    try {
-        await this.injectAllHtmlFiles(projectId);
-    } catch (e) {
-        console.warn(`[PreviewManager] Failed to inject Smart Edit script: ${e}`);
-    }
+    // Inject Smart Edit Script is handled earlier in the start method via injectSmartEditScript
 
     // Use shell:true for Flask projects on all platforms for consistent behavior
     // Flask needs shell for proper Python command resolution on Linux
@@ -1478,7 +1476,7 @@ class PreviewManager {
 
   // ... (getStatus, getLogs remain)
 
-  private async injectAllHtmlFiles(projectId: string): Promise<void> {
+  private async injectAllHtmlFiles(projectId: string, masterFilePath?: string): Promise<void> {
     const project = await getProjectById(projectId);
     if (!project) return;
 
@@ -1495,9 +1493,8 @@ class PreviewManager {
       return;
     }
 
-    
-    // 2. Inject into ALL HTML files (recursively find .html)
     const log = (msg: string) => console.debug(`[PreviewManager] [Inject] ${msg}`);
+    const normalizedMasterPath = masterFilePath ? path.relative(projectPath, masterFilePath).replace(/\\/g, '/') : null;
 
     const injectRecursively = async (dir: string) => {
         try {
@@ -1505,16 +1502,28 @@ class PreviewManager {
             for (const entry of entries) {
                 const fullPath = path.join(dir, entry.name);
                 if (entry.isDirectory()) {
-                    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'venv' || entry.name === '__pycache__') continue;
+                    if (['node_modules', '.git', '.next', 'venv', '__pycache__', '.claudable', '.claude', 'backups'].includes(entry.name)) continue;
                     await injectRecursively(fullPath);
                 } else if (entry.isFile() && entry.name.endsWith('.html')) {
                     const relPath = path.relative(projectPath, fullPath).replace(/\\/g, '/');
-                    const localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
+                    
+                    let localScriptTag: string;
+                    if (relPath === normalizedMasterPath) {
+                        // Master layout gets the full script
+                        localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
 <script>
 window.__AI_SMART_EDIT_FILE__ = "${relPath}";
 ${scriptContent}
 </script>
 <!-- AI SMART EDIT INJECTION END -->`;
+                    } else {
+                        // Child pages/templates get ONLY the file path override
+                        // This prevents duplicating the main script and ensures the correct file is targeted
+                        localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
+<script>window.__AI_SMART_EDIT_FILE__ = "${relPath}";</script>
+<!-- AI SMART EDIT INJECTION END -->`;
+                    }
+
                     await this.injectIntoHtmlFile(fullPath, relPath, localScriptTag, log);
                 }
             }
@@ -1577,102 +1586,44 @@ ${scriptContent}
   }
 
   private async injectSmartEditScript(projectPath: string, log: (msg: string) => void): Promise<void> {
-    const scriptPath = path.join(process.cwd(), 'public', 'scripts', 'ai-smart-edit.js');
-    let scriptContent = '';
+    const projectId = path.basename(projectPath); // Heuristic for projectId
     
-    try {
-      scriptContent = await fs.readFile(scriptPath, 'utf8');
-    } catch (e) {
-      log(`Could not read ai-smart-edit.js from ${scriptPath}`);
-      return;
+    // Find the Master Layout
+    let masterFilePath: string | undefined;
+
+    const candidates = [
+        path.join(projectPath, 'app', 'templates', 'base.html'),
+        path.join(projectPath, 'app', 'templates', 'layouts', 'main.html'),
+        path.join(projectPath, 'templates', 'base.html'),
+        path.join(projectPath, 'templates', 'layouts', 'main.html'),
+        path.join(projectPath, 'templates', 'index.html'),
+        path.join(projectPath, 'index.html'),
+        path.join(projectPath, 'app', 'layout.tsx'),
+        path.join(projectPath, 'app', 'layout.js'),
+        path.join(projectPath, 'pages', '_app.tsx'),
+        path.join(projectPath, 'pages', '_app.js')
+    ];
+
+    for (const cand of candidates) {
+        if (await fileExists(cand)) {
+            masterFilePath = cand;
+            break;
+        }
     }
 
-    
-    // Determine where to inject based on project structure
-    // Prioritize "Master" templates so the script appears on all pages
-
-    // 1. Flask Best Practice (app/templates/base.html)
-    const flaskBaseHtmlPath = path.join(projectPath, 'app', 'templates', 'base.html');
-    if (await fileExists(flaskBaseHtmlPath)) {
-       const relPath = path.relative(projectPath, flaskBaseHtmlPath).replace(/\\/g, '/');
-       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(flaskBaseHtmlPath, relPath, localTag, log);
-       return;
+    if (masterFilePath && (masterFilePath.endsWith('.tsx') || masterFilePath.endsWith('.js'))) {
+        const scriptPath = path.join(process.cwd(), 'public', 'scripts', 'ai-smart-edit.js');
+        if (masterFilePath.includes('_app')) {
+            await this.injectSmartEditForNextJsPages(projectPath, masterFilePath, scriptPath, log);
+        } else {
+            await this.injectSmartEditForNextJs(projectPath, masterFilePath, scriptPath, log);
+        }
+        // Even for Next.js, we should still run injectAllHtmlFiles to tag .html if any
+        await this.injectAllHtmlFiles(projectId, masterFilePath);
+    } else {
+        // For HTML/template projects, injectAllHtmlFiles handles both master and children
+        await this.injectAllHtmlFiles(projectId, masterFilePath);
     }
-
-    // 2. Flask Scaffold Pattern (app/templates/layouts/main.html)
-    const flaskLayoutMainPath = path.join(projectPath, 'app', 'templates', 'layouts', 'main.html');
-    if (await fileExists(flaskLayoutMainPath)) {
-       const relPath = path.relative(projectPath, flaskLayoutMainPath).replace(/\\/g, '/');
-       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(flaskLayoutMainPath, relPath, localTag, log);
-       return;
-    }
-
-    // 3. Simple Flask Pattern (templates/base.html)
-    const simpleFlaskBasePath = path.join(projectPath, 'templates', 'base.html');
-    if (await fileExists(simpleFlaskBasePath)) {
-       const relPath = path.relative(projectPath, simpleFlaskBasePath).replace(/\\/g, '/');
-       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(simpleFlaskBasePath, relPath, localTag, log);
-       return;
-    }
-
-    // 4. Simple Flask Scaffold Pattern (templates/layouts/main.html)
-    const simpleFlaskLayoutMainPath = path.join(projectPath, 'templates', 'layouts', 'main.html');
-    if (await fileExists(simpleFlaskLayoutMainPath)) {
-       const relPath = path.relative(projectPath, simpleFlaskLayoutMainPath).replace(/\\/g, '/');
-       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(simpleFlaskLayoutMainPath, relPath, localTag, log);
-       return;
-    }
-
-    // 5. Flask Fallback (templates/index.html)
-    const flaskTemplatePath = path.join(projectPath, 'templates', 'index.html');
-    if (await fileExists(flaskTemplatePath)) {
-       const relPath = path.relative(projectPath, flaskTemplatePath).replace(/\\/g, '/');
-       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(flaskTemplatePath, relPath, localTag, log);
-       return;
-    }
-    
-    // 6. Static HTML Fallback (index.html)
-    const indexHtmlPath = path.join(projectPath, 'index.html');
-    if (await fileExists(indexHtmlPath)) {
-      const relPath = path.relative(projectPath, indexHtmlPath).replace(/\\/g, '/');
-      const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-      await this.injectIntoHtmlFile(indexHtmlPath, relPath, localTag, log);
-      return;
-    }
-    
-    // 3. Next.js App Router (app/layout.tsx)
-    const appLayoutPath = path.join(projectPath, 'app', 'layout.tsx');
-    if (await fileExists(appLayoutPath)) {
-      await this.injectSmartEditForNextJs(projectPath, appLayoutPath, scriptPath, log);
-      return;
-    }
-
-    // 4. Next.js App Router (app/layout.js)
-    const appLayoutJsPath = path.join(projectPath, 'app', 'layout.js');
-    if (await fileExists(appLayoutJsPath)) {
-      await this.injectSmartEditForNextJs(projectPath, appLayoutJsPath, scriptPath, log);
-      return;
-    }
-
-    // 5. Next.js Pages Router (_app.tsx or pages/_app.tsx)
-    const pagesAppPath = path.join(projectPath, 'pages', '_app.tsx');
-    if (await fileExists(pagesAppPath)) {
-      await this.injectSmartEditForNextJsPages(projectPath, pagesAppPath, scriptPath, log);
-      return;
-    }
-
-    const pagesAppJsPath = path.join(projectPath, 'pages', '_app.js');
-    if (await fileExists(pagesAppJsPath)) {
-      await this.injectSmartEditForNextJsPages(projectPath, pagesAppJsPath, scriptPath, log);
-      return;
-    }
-
-    // log('No suitable entry point found for AI Smart Edit injection.');
   }
 
   /**
@@ -1848,13 +1799,28 @@ ${scriptContent}
       // Tag all elements with source IDs for granular editing
       content = tagContentWithSourceIds(content, relPath);
       
+      // Check if it's a template child (extends another layout)
+      const isTemplateChild = content.includes('{% extends') || content.includes('{% block');
+
       // Check if already injected
       if (content.includes('AI SMART EDIT INJECTION START')) {
          // Replace existing injection to ensure latest version
          content = content.replace(/<!-- AI SMART EDIT INJECTION START -->[\s\S]*?<!-- AI SMART EDIT INJECTION END -->/, injection);
          log(`Updated AI Smart Edit script in ${path.basename(filePath)}`);
+      } else if (isTemplateChild) {
+        // For child templates, we MUST inject inside a block that's actually rendered by the layout.
+        // We'll try to find the start of the first block content and prepend the script there.
+        const blockMatch = content.match(/{%\s*block\s+[a-zA-Z0-9_-]+\s*%}/);
+        if (blockMatch) {
+          const index = blockMatch.index! + blockMatch[0].length;
+          content = content.slice(0, index) + `\n${injection}\n` + content.slice(index);
+          log(`Injected AI Smart Edit script into block of template child ${path.basename(filePath)}`);
+        } else {
+          content += `\n${injection}\n`;
+          log(`Appended AI Smart Edit script to template child ${path.basename(filePath)} (no block found)`);
+        }
       } else {
-        // Inject before </body>
+        // Standard HTML injection (before </body>)
         if (content.includes('</body>')) {
           content = content.replace('</body>', `\n${injection}\n</body>`);
           log(`Injected AI Smart Edit script into ${path.basename(filePath)}`);
@@ -1868,6 +1834,67 @@ ${scriptContent}
       await fs.writeFile(filePath, content, 'utf8');
     } catch(e) {
       log(`Failed to update ${path.basename(filePath)}: ${e}`);
+    }
+  }
+
+  private async createProjectBaselines(projectPath: string, log: (msg: string) => void): Promise<void> {
+    const baselineDir = path.join(projectPath, '.claudable', 'baselines');
+    try {
+      // Check if baselines already exist for this project
+      try {
+        await fs.access(baselineDir);
+        log(`[PreviewManager] Using existing baselines for project at ${baselineDir}`);
+        return; // Already exists, don't overwrite "very original" source
+      } catch {
+        // Not found, proceed with creation
+      }
+
+      await fs.mkdir(baselineDir, { recursive: true });
+
+      const copyRecursively = async (src: string, dest: string) => {
+        const entries = await fs.readdir(src, { withFileTypes: true });
+        for (const entry of entries) {
+           const srcPath = path.join(src, entry.name);
+           const destPath = path.join(dest, entry.name);
+           if (entry.isDirectory()) {
+             // Skip system/output directories
+             if (['node_modules', '.git', '.next', 'venv', '__pycache__', '.claudable', '.claude', 'backups'].includes(entry.name)) continue;
+             await fs.mkdir(destPath, { recursive: true });
+             await copyRecursively(srcPath, destPath);
+           } else if (entry.isFile() && (entry.name.endsWith('.html') || entry.name.endsWith('.tsx') || entry.name.endsWith('.jsx') || entry.name.endsWith('.js'))) {
+             await fs.copyFile(srcPath, destPath);
+           }
+        }
+      };
+      await copyRecursively(projectPath, baselineDir);
+      log(`[PreviewManager] Created original source baselines in ${baselineDir}`);
+    } catch (e) {
+      log(`[PreviewManager] Failed to create baselines: ${e}`);
+    }
+  }
+
+  /**
+   * Update a specific file baseline after it has been saved
+   */
+  public async updateProjectFileBaseline(projectId: string, relPath: string): Promise<void> {
+    const project = await getProjectById(projectId);
+    if (!project) return;
+
+    const repoPath = project.repoPath || path.join('data', 'projects', project.id);
+    const projectRoot = path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
+    
+    // Normalize path to ensure consistency
+    const normalizedPath = relPath.replace(/\\/g, '/').replace(/^\//, '');
+    const sourcePath = path.join(projectRoot, normalizedPath);
+    const baselinePath = path.join(projectRoot, '.claudable', 'baselines', normalizedPath);
+
+    try {
+      // Ensure target directory exists in baselines
+      await fs.mkdir(path.dirname(baselinePath), { recursive: true });
+      await fs.copyFile(sourcePath, baselinePath);
+      console.log(`[PreviewManager] Updated baseline for ${normalizedPath}`);
+    } catch (e) {
+      console.error(`[PreviewManager] Failed to update baseline for ${normalizedPath}: ${e}`);
     }
   }
 }
