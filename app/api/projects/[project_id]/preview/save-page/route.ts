@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { getProjectById } from '@/lib/services/project';
+import { previewManager } from '@/lib/services/preview';
+import { cleanupSmartEditScript, cleanupSmartEditContent } from '@/lib/services/smart-edit-utils';
 
 interface RouteContext {
   params: Promise<{ project_id: string }>;
@@ -16,138 +18,25 @@ interface SavePageBody {
   content: string;
 }
 
-/**
- * Remove AI_SMART_EDIT injection markers from content
- * Handles both HTML (with START/END markers) and JSX/TSX (with comment + Script component) patterns
- */
-function cleanupSmartEditInjection(content: string): string {
-  let result = content;
-  
-  // 1. Handle HTML injection pattern with START/END markers
-  // Pattern: <!-- AI SMART EDIT INJECTION START -->[script content]<!-- AI SMART EDIT INJECTION END -->
-  const startMarker = '<!-- AI SMART EDIT INJECTION START -->';
-  const endMarker = '<!-- AI SMART EDIT INJECTION END -->';
-  
-  // Remove all instances of the HTML injection block
-  while (true) {
-    const startIndex = result.indexOf(startMarker);
-    if (startIndex === -1) break;
-    
-    const endIndex = result.indexOf(endMarker, startIndex);
-    if (endIndex === -1) break; // Malformed, stop
-    
-    // Calculate removal range (consume preceding whitespace up to a '>')
-    let removeStart = startIndex;
-    const removeEnd = endIndex + endMarker.length;
-    
-    let cursor = startIndex - 1;
-    while (cursor >= 0) {
-      const char = result[cursor];
-      if (char === ' ' || char === '\n' || char === '\r' || char === '\t') {
-        cursor--;
-      } else if (char === '>') {
-        removeStart = cursor + 1;
-        break;
-      } else {
-        break;
-      }
-    }
-    
-    result = result.substring(0, removeStart) + result.substring(removeEnd);
-  }
-  
-  // 2. Handle JSX/TSX pattern: {/* AI_SMART_EDIT_INJECTED */}\n<Script ... ai-smart-edit.js ... />
-  const jsxPattern = /\s*\{\/\*\s*AI_SMART_EDIT_INJECTED\s*\*\/\}\s*\n?\s*<Script[^>]*ai-smart-edit\.js[^>]*\/>\s*\n?/g;
-  result = result.replace(jsxPattern, '');
-  
-  // 3. Handle standalone Script components (without comment marker)
-  const scriptOnlyPattern = /<Script[^>]*ai-smart-edit\.js[^>]*\/>\s*\n?/g;
-  result = result.replace(scriptOnlyPattern, '');
-  
-  // 4. Remove the Script import if no longer used
-  const scriptUsageCount = (result.match(/<Script/g) || []).length;
-  if (scriptUsageCount === 0) {
-    const importPattern = /import\s+Script\s+from\s+['"]next\/script['"];?\s*\n?/g;
-    result = result.replace(importPattern, '');
-  }
-  
-  return result;
-}
+// Common template directories to search in for template-based projects (Flask, etc.)
+const TEMPLATE_DIRS = [
+  'app/templates/pages',
+  'app/templates',
+  'templates/pages',
+  'templates',
+  'app/pages', // For some Next.js structures
+  'src/pages',
+  'pages',
+];
 
+// Home page variations to try if requested file is not found
+const HOME_SYNONYMS = ['index.html', 'home.html', 'landing.html', 'main.html'];
 
 /**
  * Cleanup injected scripts from common layout/app files in the project
  */
-async function cleanupInjectedFiles(projectRoot: string): Promise<void> {
-  // 1. Clean specific layout/app files for Next.js projects
-  const specificFiles = [
-    'app/layout.tsx',
-    'app/layout.jsx',
-    'app/layout.js',
-    'src/app/layout.tsx',
-    'src/app/layout.jsx',
-    'src/app/layout.js',
-    'pages/_app.tsx',
-    'pages/_app.jsx',
-    'pages/_app.js',
-  ];
-
-  for (const relPath of specificFiles) {
-    const filePath = path.join(projectRoot, relPath);
-    try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      if (content.includes('AI_SMART_EDIT_INJECTED') || content.includes('ai-smart-edit.js')) {
-        const cleaned = cleanupSmartEditInjection(content);
-        if (cleaned !== content) {
-          await fs.writeFile(filePath, cleaned, 'utf-8');
-          console.log(`[SavePage] Cleaned up injection from: ${relPath}`);
-        }
-      }
-    } catch {
-      // File doesn't exist or can't be read, skip silently
-    }
-  }
-
-  // 2. Recursively scan and clean all HTML files
-  const cleanHtmlRecursively = async (dir: string): Promise<void> => {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          // Skip common directories that shouldn't be scanned
-          if (['node_modules', '.git', '.next', 'venv', '__pycache__', 'backups'].includes(entry.name)) continue;
-          await cleanHtmlRecursively(fullPath);
-        } else if (entry.isFile() && entry.name.endsWith('.html')) {
-          try {
-            const content = await fs.readFile(fullPath, 'utf-8');
-            if (content.includes('AI SMART EDIT INJECTION START') || content.includes('ai-smart-edit.js')) {
-              const cleaned = cleanupSmartEditInjection(content);
-              if (cleaned !== content) {
-                await fs.writeFile(fullPath, cleaned, 'utf-8');
-                console.log(`[SavePage] Cleaned up injection from: ${path.relative(projectRoot, fullPath)}`);
-              }
-            }
-          } catch {
-            // Skip files that can't be read
-          }
-        }
-      }
-    } catch {
-      // Directory doesn't exist or can't be read
-    }
-  };
-
-  await cleanHtmlRecursively(projectRoot);
-
-  // 3. Remove the ai-smart-edit.js file from public/scripts/ if it exists
-  const scriptPath = path.join(projectRoot, 'public', 'scripts', 'ai-smart-edit.js');
-  try {
-    await fs.unlink(scriptPath);
-    console.log(`[SavePage] Removed ai-smart-edit.js from public/scripts/`);
-  } catch {
-    // File doesn't exist, ignore
-  }
+async function cleanupInjectedFiles(projectId: string, projectRoot: string): Promise<void> {
+  await cleanupSmartEditScript(projectRoot, (msg) => console.log(`[SavePage] [Cleanup] ${msg}`));
 }
 
 
@@ -202,17 +91,44 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     // Check file exists
+    let finalAbsolutePath = absolutePath;
+    let fileFound = false;
+
     try {
-      const stats = await fs.stat(absolutePath);
-      if (!stats.isFile()) {
-        return NextResponse.json(
-          { success: false, error: 'Not a file' },
-          { status: 400 }
-        );
+      const stats = await fs.stat(finalAbsolutePath);
+      if (stats.isFile()) {
+        fileFound = true;
       }
     } catch {
+      // Not found at root, try template directories
+      console.log(`[SavePage] File not found at ${finalAbsolutePath}, searching template directories...`);
+      
+      const fileName = path.basename(normalizedPath);
+      const isHomeFile = HOME_SYNONYMS.includes(fileName.toLowerCase());
+      const candidates = isHomeFile ? HOME_SYNONYMS : [fileName];
+
+      for (const tplDir of TEMPLATE_DIRS) {
+        for (const cand of candidates) {
+          const candidatePath = path.resolve(projectRoot, tplDir, cand);
+          try {
+            const stats = await fs.stat(candidatePath);
+            if (stats.isFile()) {
+              finalAbsolutePath = candidatePath;
+              fileFound = true;
+              console.log(`[SavePage] Found file in template directory: ${candidatePath}`);
+              break;
+            }
+          } catch {
+            // Continue searching
+          }
+        }
+        if (fileFound) break;
+      }
+    }
+
+    if (!fileFound) {
       return NextResponse.json(
-        { success: false, error: 'File not found' },
+        { success: false, error: `File not found: ${normalizedPath}` },
         { status: 404 }
       );
     }
@@ -222,31 +138,38 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     await fs.mkdir(backupDir, { recursive: true });
     
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = path.basename(absolutePath);
-    const backupFileName = `${fileName}.${timestamp}.bak`;
+    const actualFileName = path.basename(finalAbsolutePath);
+    const backupFileName = `${actualFileName}.${timestamp}.bak`;
     const backupPath = path.join(backupDir, backupFileName);
     
     // Read original file, clean it, and save as backup
-    const originalContent = await fs.readFile(absolutePath, 'utf-8');
-    const cleanedBackup = cleanupSmartEditInjection(originalContent);
+    const originalContent = await fs.readFile(finalAbsolutePath, 'utf-8');
+    const cleanedBackup = cleanupSmartEditContent(originalContent);
     await fs.writeFile(backupPath, cleanedBackup, 'utf-8');
     console.log(`[SavePage] Created clean backup: ${backupPath}`);
 
 
     // Clean up AI_SMART_EDIT injection from content
-    let cleanedContent = cleanupSmartEditInjection(content);
+    let cleanedContent = cleanupSmartEditContent(content);
 
     // Write new content
-    await fs.writeFile(absolutePath, cleanedContent, 'utf-8');
-    console.log(`[SavePage] Updated file: ${absolutePath}`);
+    await fs.writeFile(finalAbsolutePath, cleanedContent, 'utf-8');
+    console.log(`[SavePage] Updated file: ${finalAbsolutePath}`);
 
     // Also cleanup layout.tsx and app.tsx if they exist (remove injected scripts)
-    await cleanupInjectedFiles(projectRoot);
+    await cleanupInjectedFiles(project_id, projectRoot);
+
+    // Re-inject for the active session (since we just cleaned it up from disk)
+    try {
+      await previewManager.injectRoute(project_id, normalizedPath);
+    } catch (e) {
+      console.warn(`[SavePage] Post-save injection failed: ${e}`);
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        path: normalizedPath,
+        path: path.relative(projectRoot, finalAbsolutePath).replace(/\\/g, '/'),
         backupPath: path.relative(projectRoot, backupPath).replace(/\\/g, '/'),
       },
     });

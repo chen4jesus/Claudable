@@ -325,6 +325,29 @@ export default function ChatPage() {
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
 
+  // Trigger cleanup when leaving the project or closing the tab
+  useEffect(() => {
+    if (!projectId) return;
+
+    const cleanup = () => {
+      const url = `${API_BASE}/api/projects/${projectId}/preview/stop`;
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        navigator.sendBeacon(url);
+      } else {
+        fetch(url, { method: 'POST', keepalive: true }).catch(() => {});
+      }
+    };
+
+    // Handle tab/window close
+    window.addEventListener('beforeunload', cleanup);
+    
+    return () => {
+      window.removeEventListener('beforeunload', cleanup);
+      // Handle navigation within the app
+      cleanup();
+    };
+  }, [projectId]);
+
   const sendInitialPrompt = useCallback(async (initialPrompt: string) => {
     if (initialPromptSent) {
       return;

@@ -307,10 +307,18 @@
     const toRemove = clone.querySelectorAll('#ai-smart-edit-hover, #ai-smart-edit-selected, #ai-smart-edit-styles');
     toRemove.forEach(el => el.remove());
     
-    // Remove AI Smart Edit script
+    // Remove AI Smart Edit script (both with src and inlined)
     clone.querySelectorAll('script').forEach(s => {
-      if (s.src && s.src.includes('ai-smart-edit.js')) s.remove();
+      if (s.src && s.src.includes('ai-smart-edit.js')) {
+        s.remove();
+      } else if (s.textContent && s.textContent.includes('window.__AI_SMART_EDIT_FILE__')) {
+        // Also remove the marker comments if they were accidentally captured as text nodes (unlikely but safe)
+        s.remove();
+      }
     });
+
+    // Note: Comments like <!-- AI SMART EDIT INJECTION START --> are harder to remove from DOM clone 
+    // without iterating all nodes. We rely on the server-side cleanup to remove them.
     
     // Clean up contentEditable and editing class
     clone.querySelectorAll('[contenteditable]').forEach(el => {
@@ -335,7 +343,8 @@
       type: `${NAMESPACE}:PAGE_CONTENT`,
       payload: {
         html: htmlContent,
-        route: window.location.pathname
+        route: window.location.pathname,
+        filePath: window.__AI_SMART_EDIT_FILE__ || null
       }
     }, '*');
   }

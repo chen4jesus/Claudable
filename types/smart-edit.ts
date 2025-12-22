@@ -13,7 +13,7 @@ export type AiSmartEditMessage =
   | { type: 'AI_SMART_EDIT:UPDATE_IMAGE'; payload: { selector: string; src: string } }
   | { type: 'AI_SMART_EDIT:UPDATE_LINK'; payload: { selector: string; href: string; text?: string } }
   | { type: 'AI_SMART_EDIT:SAVE_PAGE' }
-  | { type: 'AI_SMART_EDIT:PAGE_CONTENT'; payload: { html: string; route: string } }
+  | { type: 'AI_SMART_EDIT:PAGE_CONTENT'; payload: { html: string; route: string; filePath?: string } }
   | { type: 'AI_SMART_EDIT:SAVE_RESULT'; payload: { success: boolean; error?: string } };
 
 export interface ImageClickContext {

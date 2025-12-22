@@ -10,6 +10,7 @@ import { findAvailablePort } from '@/lib/utils/ports';
 import { getProjectById, updateProject, updateProjectStatus } from './project';
 import { scaffoldBasicNextApp, scaffoldStaticHtmlApp, scaffoldFlaskApp } from '@/lib/utils/scaffold';
 import { PREVIEW_CONFIG } from '@/lib/config/constants';
+import { cleanupSmartEditScript, cleanupSmartEditContent } from './smart-edit-utils';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -833,7 +834,21 @@ async function runPipInstall(
  * Verify which python binary is available (python3 vs python vs specific versions)
  */
 async function detectPythonCommand(env: NodeJS.ProcessEnv): Promise<string> {
-  if (process.platform === 'win32') return 'python';
+  if (process.platform === 'win32') {
+    try {
+      // Find all python paths
+      const { execSync } = require('child_process');
+      const output = execSync('where python', { env }).toString();
+      const paths = output.split(/\r?\n/).filter((p: string) => p.trim().length > 0);
+      // Look for a path that ISN'T the Microsoft Store shim
+      const realPath = paths.find((p: string) => !p.includes('Microsoft\\WindowsApps')) || paths[0];
+      if (realPath) return realPath;
+    } catch {
+      // Fallback
+    }
+    return 'python';
+  }
+
   
   const candidates = ['python3', 'python', 'python3.12', 'python3.11', 'python3.10', 'python3.9', 'python3.8'];
   
@@ -1107,7 +1122,7 @@ class PreviewManager {
 
     console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
     
-    const ip = 'localhost'; // Force localhost to avoid Windows Firewall issues with external IPs
+    const ip = '127.0.0.1'; // Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues on Windows
     const initialUrl = `http://${ip}:${preferredPort}`;
 
     const env: NodeJS.ProcessEnv = {
@@ -1116,6 +1131,7 @@ class PreviewManager {
       WEB_PORT: String(preferredPort),
       NEXT_PUBLIC_APP_URL: initialUrl,
     };
+
 
     const previewProcess: PreviewProcess = {
       process: null,
@@ -1196,6 +1212,16 @@ class PreviewManager {
 
     const isFlaskProject = effectiveType === 'flask';
 
+    // Filter out environment variables that could conflict with the child process.
+    // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
+    if (isFlaskProject || effectiveType === 'static-html') {
+      delete env.DATABASE_URL;
+      delete env.DATABASE_PRISMA_URL;
+      delete env.DATABASE_URL_NON_POOLING;
+      delete env.SHADOW_DATABASE_URL;
+    }
+
+
     // For Flask projects, ALWAYS use the preview manager's dynamically assigned port.
     // Do NOT use the project's .env PORT to avoid conflicts with Claudable's own port.
     // For Node.js projects, we can respect the project's port preference.
@@ -1259,6 +1285,12 @@ class PreviewManager {
     // Flask needs shell for proper Python command resolution on Linux
     const useShell = isFlaskProject ? true : process.platform === 'win32';
     
+    // DEBUG: Log spawn details
+    console.error(`[PreviewManager DEBUG] Spawning: ${spawnCommand} ${spawnArgs.join(' ')}`);
+    console.error(`[PreviewManager DEBUG] CWD: ${projectPath}`);
+    console.error(`[PreviewManager DEBUG] PORT: ${env.PORT}`);
+    console.error(`[PreviewManager DEBUG] shell: ${useShell}`);
+    
     const child = spawn(
       spawnCommand,
       spawnArgs,
@@ -1269,12 +1301,12 @@ class PreviewManager {
         stdio: ['ignore', 'pipe', 'pipe'],
       }
     );
-
-    // ... (std/err handlers)
-    previewProcess.process = child;
-    this.processes.set(projectId, previewProcess);
+    
+    console.error(`[PreviewManager DEBUG] Spawned child PID: ${child.pid}`);
 
     child.stdout?.on('data', (chunk) => {
+      const msg = chunk.toString();
+      console.error(`[PreviewManager STDOUT] ${msg.trim()}`);
       log(chunk);
       if (previewProcess.status === 'starting') {
         previewProcess.status = 'running';
@@ -1282,10 +1314,13 @@ class PreviewManager {
     });
 
     child.stderr?.on('data', (chunk) => {
+      const msg = chunk.toString();
+      console.error(`[PreviewManager STDERR] ${msg.trim()}`);
       log(chunk);
     });
 
     child.on('exit', (code, signal) => {
+      console.error(`[PreviewManager DEBUG] Process ${child.pid} exited with code ${code} and signal ${signal}`);
       previewProcess.status = code === 0 ? 'stopped' : 'error';
       this.processes.delete(projectId);
       updateProject(projectId, {
@@ -1307,12 +1342,14 @@ class PreviewManager {
     });
 
     child.on('error', (error) => {
+      console.error(`[PreviewManager DEBUG] Process ${child.pid} encountered error: ${error.message}`);
       previewProcess.status = 'error';
       log(Buffer.from(`Preview process failed: ${error.message}`));
     });
 
-    await waitForPreviewReady(previewProcess.url, log).catch(() => {
-      // wait function already logged; ignore errors
+    console.error(`[PreviewManager DEBUG] Waiting for preview ready at ${previewProcess.url}...`);
+    await waitForPreviewReady(previewProcess.url, log).catch((err) => {
+      console.error(`[PreviewManager DEBUG] waitForPreviewReady failed: ${err}`);
     });
 
     await updateProject(projectId, {
@@ -1325,9 +1362,20 @@ class PreviewManager {
   }
 
   public async stop(projectId: string): Promise<PreviewInfo> {
+    const project = await getProjectById(projectId);
+    if (project) {
+        const projectPath = project.repoPath
+          ? path.resolve(project.repoPath)
+          : path.join(process.cwd(), 'projects', projectId);
+        try {
+            await this.cleanupSmartEditScript(projectPath, (msg) => console.log(`[PreviewManager] [Cleanup on Stop] ${msg}`));
+        } catch (e) {
+            console.warn('[PreviewManager] Failed to cleanup script on stop:', e);
+        }
+    }
+
     const processInfo = this.processes.get(projectId);
     if (!processInfo) {
-      const project = await getProjectById(projectId);
       if (project) {
         await updateProject(projectId, {
           previewUrl: null,
@@ -1343,20 +1391,8 @@ class PreviewManager {
       };
     }
 
-    // Cleanup injected script on stop
-    const project = await getProjectById(projectId);
-    if (project) {
-        const projectPath = project.repoPath
-          ? path.resolve(project.repoPath)
-          : path.join(process.cwd(), 'projects', projectId);
-        try {
-            await this.cleanupSmartEditScript(projectPath, (msg) => console.debug(`[PreviewManager] ${msg}`));
-        } catch (e) {
-            console.warn('[PreviewManager] Failed to cleanup script on stop:', e);
-        }
-    }
-
     if (processInfo.process) {
+      // ... same process termination logic ...
       await new Promise<void>((resolve) => {
         const proc = processInfo.process!;
         // If already exited, resolve immediately
@@ -1420,13 +1456,6 @@ class PreviewManager {
       return;
     }
 
-    const scriptTag = `
-<!-- AI SMART EDIT INJECTION START -->
-<script>
-${scriptContent}
-</script>
-<!-- AI SMART EDIT INJECTION END -->
-`;
     
     // 2. Inject into ALL HTML files (recursively find .html)
     const log = (msg: string) => console.debug(`[PreviewManager] [Inject] ${msg}`);
@@ -1440,7 +1469,14 @@ ${scriptContent}
                     if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'venv' || entry.name === '__pycache__') continue;
                     await injectRecursively(fullPath);
                 } else if (entry.isFile() && entry.name.endsWith('.html')) {
-                    await this.injectIntoHtmlFile(fullPath, scriptTag, log);
+                    const relPath = path.relative(projectPath, fullPath).replace(/\\/g, '/');
+                    const localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
+<script>
+window.__AI_SMART_EDIT_FILE__ = "${relPath}";
+${scriptContent}
+</script>
+<!-- AI SMART EDIT INJECTION END -->`;
+                    await this.injectIntoHtmlFile(fullPath, localScriptTag, log);
                 }
             }
         } catch {
@@ -1455,160 +1491,12 @@ ${scriptContent}
     }
   }
 
-  private async cleanupSmartEditScript(projectPath: string, log: (msg: string) => void): Promise<void> {
-    // 1. Clean up HTML files (static/Flask)
-    const injectRecursively = async (dir: string) => {
-        try {
-            const entries = await fs.readdir(dir, { withFileTypes: true });
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'venv' || entry.name === '__pycache__') continue;
-                    await injectRecursively(fullPath);
-                } else if (entry.isFile() && entry.name.endsWith('.html')) {
-                    await this.removeScriptFromHtmlFile(fullPath, log);
-                }
-            }
-        } catch {
-            // ignore
-        }
-    };
-    await injectRecursively(projectPath);
-
-    // 2. Clean up Next.js App Router (layout.tsx / layout.js)
-    const appLayoutTsxPath = path.join(projectPath, 'app', 'layout.tsx');
-    const appLayoutJsPath = path.join(projectPath, 'app', 'layout.js');
-    if (await fileExists(appLayoutTsxPath)) {
-      await this.removeSmartEditFromNextJsFile(appLayoutTsxPath, log);
-    }
-    if (await fileExists(appLayoutJsPath)) {
-      await this.removeSmartEditFromNextJsFile(appLayoutJsPath, log);
-    }
-
-    // 3. Clean up Next.js Pages Router (_app.tsx / _app.js)
-    const pagesAppTsxPath = path.join(projectPath, 'pages', '_app.tsx');
-    const pagesAppJsPath = path.join(projectPath, 'pages', '_app.js');
-    if (await fileExists(pagesAppTsxPath)) {
-      await this.removeSmartEditFromNextJsFile(pagesAppTsxPath, log);
-    }
-    if (await fileExists(pagesAppJsPath)) {
-      await this.removeSmartEditFromNextJsFile(pagesAppJsPath, log);
-    }
-
-    // 4. Remove the copied script file from public/scripts/
-    const copiedScriptPath = path.join(projectPath, 'public', 'scripts', 'ai-smart-edit.js');
-    try {
-      await fs.unlink(copiedScriptPath);
-      log(`Removed ai-smart-edit.js from public/scripts/`);
-    } catch {
-      // File doesn't exist or already removed - ignore
-    }
+  public async cleanupSmartEditScript(projectPath: string, log: (msg: string) => void): Promise<void> {
+    return cleanupSmartEditScript(projectPath, log);
   }
 
-  /**
-   * Remove AI Smart Edit injection from Next.js layout/app files
-   */
-  private async removeSmartEditFromNextJsFile(filePath: string, log: (msg: string) => void): Promise<void> {
-    try {
-      let content = await fs.readFile(filePath, 'utf8');
-      
-      // Check if our injection marker exists
-      if (!content.includes('AI_SMART_EDIT_INJECTED') && !content.includes('ai-smart-edit.js')) {
-        return;
-      }
-
-      let hasChanges = false;
-
-      // Remove the Script component line(s)
-      const scriptLinePattern = /\s*\{\/\*\s*AI_SMART_EDIT_INJECTED\s*\*\/\}\s*\n?\s*<Script[^>]*ai-smart-edit\.js[^>]*\/>\s*\n?/g;
-      if (scriptLinePattern.test(content)) {
-        content = content.replace(scriptLinePattern, '');
-        hasChanges = true;
-      }
-
-      // Also try alternative pattern (just the Script tag without comment)
-      const scriptOnlyPattern = /<Script[^>]*ai-smart-edit\.js[^>]*\/>\s*\n?/g;
-      if (scriptOnlyPattern.test(content)) {
-        content = content.replace(scriptOnlyPattern, '');
-        hasChanges = true;
-      }
-
-      // Remove the Script import if it was added solely for our injection
-      // Only remove if there are no other uses of Script in the file
-      const scriptUsageCount = (content.match(/<Script/g) || []).length;
-      if (scriptUsageCount === 0) {
-        // Remove the import line
-        const importPattern = /import\s+Script\s+from\s+['"]next\/script['"];\s*\n?/g;
-        if (importPattern.test(content)) {
-          content = content.replace(importPattern, '');
-          hasChanges = true;
-        }
-      }
-
-      if (hasChanges) {
-        await fs.writeFile(filePath, content, 'utf8');
-        log(`Cleaned up AI Smart Edit from ${path.basename(filePath)}`);
-      }
-    } catch (e) {
-      log(`Failed to cleanup ${path.basename(filePath)}: ${e}`);
-    }
-  }
-
-  private async removeScriptFromHtmlFile(filePath: string, log: (msg: string) => void): Promise<void> {
-      try {
-          const content = await fs.readFile(filePath, 'utf8');
-          const startMarker = '<!-- AI SMART EDIT INJECTION START -->';
-          const endMarker = '<!-- AI SMART EDIT INJECTION END -->';
-          
-          let newContent = content;
-          let hasChanges = false;
-          
-          // Loop to remove all instances
-          while (true) {
-              const startIndex = newContent.indexOf(startMarker);
-              if (startIndex === -1) break;
-
-              const endIndex = newContent.indexOf(endMarker, startIndex);
-              if (endIndex === -1) {
-                   // If we have a start but no end, we abort to strictly avoid data loss
-                   log(`[WARNING] Malformed injection markers in ${path.basename(filePath)}. Aborting cleanup.`);
-                   break;
-              }
-
-              // Calculate the range to remove
-              let removeStart = startIndex;
-              const removeEnd = endIndex + endMarker.length;
-
-              // Look backwards from startIndex to consume preceding whitespace up to a '>'
-              // This strictly replicates the regex logic (?<=[>])[\s\r\n]+ but safely
-              let cursor = startIndex - 1;
-              while (cursor >= 0) {
-                  const char = newContent[cursor];
-                  if (char === ' ' || char === '\n' || char === '\r' || char === '\t') {
-                      cursor--;
-                  } else if (char === '>') {
-                      // Found the closing bracket of the previous tag, so we can verify this whitespace is safe to remove
-                      removeStart = cursor + 1; // Start removal AFTER the '>'
-                      break;
-                  } else {
-                      // Found meaningful content (not whitespace, not '>'), so DO NOT touch the whitespace
-                      // This ensures we don't merge distinct text nodes or break layout if not adjacent to a tag
-                      break;
-                  }
-              }
-
-              // Perform the cut
-              newContent = newContent.substring(0, removeStart) + newContent.substring(removeEnd);
-              hasChanges = true;
-          }
-
-          if (hasChanges && newContent !== content) {
-              await fs.writeFile(filePath, newContent, 'utf8');
-              log(`Removed AI Smart Edit script from ${path.basename(filePath)}`);
-          }
-      } catch (e) {
-          log(`Failed to cleanup ${path.basename(filePath)}: ${e}`);
-      }
+  public cleanupSmartEditContent(content: string): string {
+    return cleanupSmartEditContent(content);
   }
 
   public async injectRoute(projectId: string, route: string): Promise<{ injected: boolean; detectedRoute: string }> {
@@ -1660,7 +1548,6 @@ ${scriptContent}
       return;
     }
 
-    const scriptTag = `<!-- AI SMART EDIT INJECTION START --><script>${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
     
     // Determine where to inject based on project structure
     // Prioritize "Master" templates so the script appears on all pages
@@ -1668,42 +1555,54 @@ ${scriptContent}
     // 1. Flask Best Practice (app/templates/base.html)
     const flaskBaseHtmlPath = path.join(projectPath, 'app', 'templates', 'base.html');
     if (await fileExists(flaskBaseHtmlPath)) {
-       await this.injectIntoHtmlFile(flaskBaseHtmlPath, scriptTag, log);
+       const relPath = path.relative(projectPath, flaskBaseHtmlPath).replace(/\\/g, '/');
+       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+       await this.injectIntoHtmlFile(flaskBaseHtmlPath, localTag, log);
        return;
     }
 
     // 2. Flask Scaffold Pattern (app/templates/layouts/main.html)
     const flaskLayoutMainPath = path.join(projectPath, 'app', 'templates', 'layouts', 'main.html');
     if (await fileExists(flaskLayoutMainPath)) {
-       await this.injectIntoHtmlFile(flaskLayoutMainPath, scriptTag, log);
+       const relPath = path.relative(projectPath, flaskLayoutMainPath).replace(/\\/g, '/');
+       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+       await this.injectIntoHtmlFile(flaskLayoutMainPath, localTag, log);
        return;
     }
 
     // 3. Simple Flask Pattern (templates/base.html)
     const simpleFlaskBasePath = path.join(projectPath, 'templates', 'base.html');
     if (await fileExists(simpleFlaskBasePath)) {
-       await this.injectIntoHtmlFile(simpleFlaskBasePath, scriptTag, log);
+       const relPath = path.relative(projectPath, simpleFlaskBasePath).replace(/\\/g, '/');
+       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+       await this.injectIntoHtmlFile(simpleFlaskBasePath, localTag, log);
        return;
     }
 
     // 4. Simple Flask Scaffold Pattern (templates/layouts/main.html)
     const simpleFlaskLayoutMainPath = path.join(projectPath, 'templates', 'layouts', 'main.html');
     if (await fileExists(simpleFlaskLayoutMainPath)) {
-       await this.injectIntoHtmlFile(simpleFlaskLayoutMainPath, scriptTag, log);
+       const relPath = path.relative(projectPath, simpleFlaskLayoutMainPath).replace(/\\/g, '/');
+       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+       await this.injectIntoHtmlFile(simpleFlaskLayoutMainPath, localTag, log);
        return;
     }
 
     // 5. Flask Fallback (templates/index.html)
     const flaskTemplatePath = path.join(projectPath, 'templates', 'index.html');
     if (await fileExists(flaskTemplatePath)) {
-       await this.injectIntoHtmlFile(flaskTemplatePath, scriptTag, log);
+       const relPath = path.relative(projectPath, flaskTemplatePath).replace(/\\/g, '/');
+       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+       await this.injectIntoHtmlFile(flaskTemplatePath, localTag, log);
        return;
     }
     
     // 6. Static HTML Fallback (index.html)
     const indexHtmlPath = path.join(projectPath, 'index.html');
     if (await fileExists(indexHtmlPath)) {
-      await this.injectIntoHtmlFile(indexHtmlPath, scriptTag, log);
+      const relPath = path.relative(projectPath, indexHtmlPath).replace(/\\/g, '/');
+      const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
+      await this.injectIntoHtmlFile(indexHtmlPath, localTag, log);
       return;
     }
     
@@ -1915,11 +1814,11 @@ ${scriptContent}
       } else {
         // Inject before </body>
         if (content.includes('</body>')) {
-          content = content.replace('</body>', `${injection}</body>`);
+          content = content.replace('</body>', `\n${injection}\n</body>`);
           log(`Injected AI Smart Edit script into ${path.basename(filePath)}`);
         } else {
           // Fallback: append to end
-          content += injection;
+          content += `\n${injection}\n`;
           log(`Appended AI Smart Edit script to ${path.basename(filePath)} (no </body> tag found)`);
         }
       }

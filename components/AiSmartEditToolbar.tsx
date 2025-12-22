@@ -183,12 +183,13 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
 
           try {
             const route = data.payload.route || '/index.html';
-            // Convert route to file path (e.g., "/" -> "index.html", "/about" -> "about.html" or "about/index.html")
-            let filePath = route;
-            if (filePath === '/') {
+            let filePath = data.payload.filePath || route;
+            
+            if (filePath === '/' || filePath === '') {
               filePath = 'index.html';
-            } else if (!filePath.endsWith('.html')) {
-              filePath = filePath.replace(/^\//, '') + '.html';
+            } else if (!data.payload.filePath && !filePath.endsWith('.html') && !filePath.includes('.')) {
+              // Only apply route mapping if we don't have an explicit filePath
+              filePath = filePath.replace(/^\//, '').replace(/\/$/, '') + '.html';
             } else {
               filePath = filePath.replace(/^\//, '');
             }

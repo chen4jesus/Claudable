@@ -4,6 +4,7 @@ import { getPlainServiceToken } from '@/lib/services/tokens';
 import { getProjectById, updateProject } from '@/lib/services/project';
 import { getProjectService, upsertProjectServiceConnection, updateProjectServiceData } from '@/lib/services/project-services';
 import { ensureGitRepository, ensureGitConfig, initializeMainBranch, addOrUpdateRemote, commitAll, pushToRemote } from '@/lib/services/git';
+import { cleanupSmartEditScript } from '@/lib/services/smart-edit-utils';
 import type { GitHubUserInfo, CreateRepoOptions, GitHubRepositoryInfo } from '@/types/shared';
 
 class GitHubError extends Error {
@@ -199,6 +200,10 @@ export async function connectProjectToGitHub(projectId: string, options: CreateR
 
   const authenticatedUrl = cloneUrl.replace('https://', `https://${user.login}:${token}@`);
   addOrUpdateRemote(repoPath, 'origin', authenticatedUrl);
+  
+  // Cleanup AI injections before first commit
+  await cleanupSmartEditScript(repoPath, (msg) => console.log(`[GitHubService] [Cleanup] ${msg}`));
+  
   commitAll(repoPath, 'Initial commit - connected to GitHub');
 
   await upsertProjectServiceConnection(projectId, 'github', {
@@ -243,6 +248,10 @@ export async function pushProjectToGitHub(projectId: string) {
     const userEmail = user.email || `${user.login}@users.noreply.github.com`;
     ensureGitConfig(repoPath, userName, userEmail);
     addOrUpdateRemote(repoPath, 'origin', authenticatedUrl);
+
+    // Cleanup AI injections before push commit
+    await cleanupSmartEditScript(repoPath, (msg) => console.log(`[GitHubService] [Cleanup] ${msg}`));
+
     const committed = commitAll(repoPath, 'Update from Claudable');
     if (!committed) {
       console.debug('[GitHubService] No changes to commit before push');
