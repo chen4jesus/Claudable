@@ -765,11 +765,17 @@ async function runPipInstall(
   installArgs: string[],
   cwd: string,
   env: NodeJS.ProcessEnv,
-  logger: (chunk: Buffer | string) => void
+  logger: (chunk: Buffer | string) => void,
+  pythonCommand?: string
 ): Promise<void> {
   let lastError: unknown;
 
-  for (const option of pipOptions) {
+  const options = [...pipOptions];
+  if (pythonCommand) {
+    options.unshift({ cmd: pythonCommand, args: ['-m', 'pip'] });
+  }
+
+  for (const option of options) {
     try {
       const finalArgs = [...option.args, ...installArgs];
       await appendCommandLogs(option.cmd, finalArgs, cwd, env, logger);
@@ -778,7 +784,7 @@ async function runPipInstall(
       lastError = error;
       
       // If command not found, try next option
-      if (isCommandNotFound(error) && option !== pipOptions[pipOptions.length - 1]) {
+      if (isCommandNotFound(error) && option !== options[options.length - 1]) {
         logger(Buffer.from(`[PreviewManager] '${option.cmd}' not found, trying next method...`));
         continue;
       }
@@ -817,7 +823,7 @@ async function runPipInstall(
       // But let's stick to the flow: if it's strictly NOT ENOENT, we probably shouldn't continue loop unless we want to be super aggressive.
       // Given the 'break-system-packages' retry didn't work, we probably just stop.
       // But the original code allowed continue only on ENOENT.
-      if (option !== pipOptions[pipOptions.length - 1] && isCommandNotFound(error)) {
+      if (option !== options[options.length - 1] && isCommandNotFound(error)) {
          continue; 
       }
       
@@ -982,11 +988,28 @@ class PreviewManager {
     const runInstall = async () => {
       const installPromise = (async () => {
         try {
-            await runInstallWithPreferredManager(
-              projectPath,
-              { ...process.env },
-              collectFromChunk
-            );
+            // Detect project type for installation
+            let detectedType = project.templateType;
+            if (detectedType === 'git-import') {
+              detectedType = await detectProjectType(projectPath);
+            }
+
+            if (detectedType === 'flask') {
+              const requirementsPath = path.join(projectPath, 'requirements.txt');
+              if (await fileExists(requirementsPath)) {
+                record('Installing Python dependencies for Flask project...');
+                const pyCmd = await detectPythonCommand({ ...process.env });
+                await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, { ...process.env }, collectFromChunk, pyCmd);
+              } else {
+                record('Flask project detected but requirements.txt missing. Skipping pip install.');
+              }
+            } else {
+              await runInstallWithPreferredManager(
+                projectPath,
+                { ...process.env },
+                collectFromChunk
+              );
+            }
         } catch (error) {
           record('Dependency installation failed. Cleaning up node_modules to allow retry.');
           await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {});
@@ -1136,12 +1159,18 @@ class PreviewManager {
     // Ensure dependencies with the same per-project lock used by installDependencies
     // We do this IMMEDIATELY after import/scaffold as requested.
     const ensureWithLock = async () => {
-      if (project.templateType === 'flask') {
+      const effectiveTypeBeforeInstall = project.templateType === 'git-import' 
+        ? (project as any)._detectedType || 'custom'
+        : project.templateType;
+
+      if (effectiveTypeBeforeInstall === 'flask') {
         // Python dependency check
         if (await fileExists(path.join(projectPath, 'requirements.txt'))) {
              log(Buffer.from('[PreviewManager] Installing/Updating Python dependencies...'));
+             // Detect python command BEFORE install to ensure consistency
+             const pyCmd = await detectPythonCommand(env);
              // Always run install to ensure deps are up to date (pip is fast if satisfied)
-             await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log);
+             await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log, pyCmd);
         }
         return;
       }
