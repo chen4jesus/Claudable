@@ -1008,11 +1008,7 @@ class PreviewManager {
       await runInstall();
     }
 
-    if (hadNodeModules) {
-      record('Dependencies already installed. Skipped install command.');
-    } else {
-      record('Dependency installation completed.');
-    }
+    record('Dependency installation/update completed.');
 
     return { logs };
   }
@@ -1034,27 +1030,52 @@ class PreviewManager {
 
     await fs.mkdir(projectPath, { recursive: true });
 
-    const pendingLogs: string[] = [];
-    const queueLog = (message: string) => {
-      const formatted = `[PreviewManager] ${message}`;
-      console.debug(formatted);
-      pendingLogs.push(formatted);
+    const previewBounds = resolvePreviewBounds();
+    console.info(`[PreviewManager] Preview port range: ${previewBounds.start}-${previewBounds.end} (PREVIEW_PORT_START=${process.env.PREVIEW_PORT_START || 'not set'})`);
+    
+    const preferredPort = await findAvailablePort(
+      previewBounds.start,
+      previewBounds.end
+    );
+
+    console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
+    
+    const ip = '0.0.0.0'; // Use 0.0.0.0 instead of localhost to avoid IPv6 resolution issues on Windows
+    const initialUrl = `http://${ip}:${preferredPort}`;
+
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PORT: String(preferredPort),
+      WEB_PORT: String(preferredPort),
+      NEXT_PUBLIC_APP_URL: initialUrl,
     };
 
-    await ensureProjectRootStructure(projectPath, queueLog);
+    const previewProcess: PreviewProcess = {
+      process: null,
+      port: preferredPort,
+      url: initialUrl,
+      status: 'starting',
+      logs: [],
+      startedAt: new Date(),
+    };
+
+    const log = this.getLogger(previewProcess);
+    this.processes.set(projectId, previewProcess);
+
+    await ensureProjectRootStructure(projectPath, (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
 
     // --- AI Smart Edit Injection Setup ---
     // Ensure clean state before starting
     try {
-        await this.cleanupSmartEditScript(projectPath, queueLog);
+        await this.cleanupSmartEditScript(projectPath, (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
     } catch (e) {
         // Ignore cleanup errors on start
     }
     
     try {
-      await this.injectSmartEditScript(projectPath, queueLog);
+      await this.injectSmartEditScript(projectPath, (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
     } catch (e) {
-      queueLog(`[Warning] Failed to inject AI Smart Edit script: ${e instanceof Error ? e.message : e}`);
+      log(Buffer.from(`[PreviewManager] [Warning] Failed to inject AI Smart Edit script: ${e instanceof Error ? e.message : e}`));
     }
     // -------------------------------
 
@@ -1065,10 +1086,10 @@ class PreviewManager {
         if (!wsgiExists) {
             console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
             await scaffoldFlaskApp(projectPath, projectId);
-            await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+            await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         } else {
             // If exists, ensure port binding is correct
-            await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+            await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         }
       } else {
         await fs.access(path.join(projectPath, 'package.json'));
@@ -1099,10 +1120,10 @@ class PreviewManager {
         if (!wsgiExists) {
              console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
              await scaffoldFlaskApp(projectPath, projectId);
-             await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+             await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         } else {
              console.debug(`[PreviewManager] Internal flask check: found wsgi.py, skipping scaffold.`);
-             await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+             await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         }
       } else {
         console.debug(
@@ -1112,47 +1133,8 @@ class PreviewManager {
       }
     }
 
-    const previewBounds = resolvePreviewBounds();
-    console.info(`[PreviewManager] Preview port range: ${previewBounds.start}-${previewBounds.end} (PREVIEW_PORT_START=${process.env.PREVIEW_PORT_START || 'not set'})`);
-    
-    const preferredPort = await findAvailablePort(
-      previewBounds.start,
-      previewBounds.end
-    );
-
-    console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
-    
-    const ip = '127.0.0.1'; // Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues on Windows
-    const initialUrl = `http://${ip}:${preferredPort}`;
-
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      PORT: String(preferredPort),
-      WEB_PORT: String(preferredPort),
-      NEXT_PUBLIC_APP_URL: initialUrl,
-    };
-
-
-    const previewProcess: PreviewProcess = {
-      process: null,
-      port: preferredPort,
-      url: initialUrl,
-      status: 'starting',
-      logs: [],
-      startedAt: new Date(),
-    };
-
-    const log = this.getLogger(previewProcess);
-    const flushPendingLogs = () => {
-      if (pendingLogs.length === 0) {
-        return;
-      }
-      const entries = pendingLogs.splice(0);
-      entries.forEach((entry) => log(Buffer.from(entry)));
-    };
-    flushPendingLogs();
-
     // Ensure dependencies with the same per-project lock used by installDependencies
+    // We do this IMMEDIATELY after import/scaffold as requested.
     const ensureWithLock = async () => {
       if (project.templateType === 'flask') {
         // Python dependency check
@@ -1167,10 +1149,10 @@ class PreviewManager {
       // Always ensure dependencies (npm will handle caching/idempotency)
       // Check concurrency lock:
 
-      const existing = this.installing.get(projectId);
-      if (existing) {
+      const existingInstall = this.installing.get(projectId);
+      if (existingInstall) {
         log(Buffer.from('[PreviewManager] Dependency installation already in progress; waiting...'));
-        await existing;
+        await existingInstall;
         return;
       }
       const installPromise = (async () => {
@@ -1252,7 +1234,7 @@ class PreviewManager {
        // Prioritize wsgi.py -> app.py  
        const entryPoint = wsgiExists ? 'wsgi.py' : 'app.py';
        
-       await enforceFlaskPort(projectPath, entryPoint, queueLog);
+       await enforceFlaskPort(projectPath, entryPoint, (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
 
        spawnCommand = await detectPythonCommand(env);
        spawnArgs = [entryPoint];
