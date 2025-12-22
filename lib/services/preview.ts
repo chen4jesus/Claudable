@@ -1058,58 +1058,43 @@ class PreviewManager {
     }
     // -------------------------------
 
+    // Determine effective project type early for dependency installation and port logic
+    let detectedType: DetectedProjectType | null = null;
+    if (project.templateType === 'git-import') {
+      detectedType = await detectProjectType(projectPath);
+      queueLog(`Detected project type for git-import: ${detectedType}`);
+      // Store on project object for later use in spawn command selection
+      (project as any)._detectedType = detectedType;
+    }
+
+    const effectiveType = detectedType || project.templateType;
+    const isFlaskProject = effectiveType === 'flask';
+
     try {
-      if (project.templateType === 'flask') {
+      if (isFlaskProject) {
         const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
-        
         if (!wsgiExists) {
-            console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+            queueLog(`Bootstrapping Flask app`);
             await scaffoldFlaskApp(projectPath, projectId);
-            await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
-        } else {
-            // If exists, ensure port binding is correct
-            await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+        }
+        // Always ensure port binding is correct for Flask
+        await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+      } else if (effectiveType === 'static-html') {
+        const indexExists = await fileExists(path.join(projectPath, 'index.html'));
+        if (!indexExists) {
+          queueLog(`Bootstrapping static HTML app`);
+          await scaffoldStaticHtmlApp(projectPath, projectId);
         }
       } else {
-        await fs.access(path.join(projectPath, 'package.json'));
-      }
-    } catch {
-      if (project.templateType === 'git-import') {
-        // Detect actual project type for git imports
-        const detectedType = await detectProjectType(projectPath);
-        console.debug(`[PreviewManager] Git import detected. Detected project type: ${detectedType}`);
-        
-        // Update project's effective type for later use in this method
-        // Store detected type for use in spawn command selection
-        (project as any)._detectedType = detectedType;
-        
-        if (detectedType === 'flask') {
-          console.debug(`[PreviewManager] Setting up Flask project from git import`);
-          // Flask setup will be done by enforceFlaskPort below
+        // For Node.js/Next.js and others, ensure we have a packge.json if it's supposed to be a web app
+        const packageJsonExists = await fileExists(path.join(projectPath, 'package.json'));
+        if (!packageJsonExists && (effectiveType === 'nextjs' || effectiveType === 'react' || effectiveType === 'vue')) {
+          queueLog(`Bootstrapping basic app structure for ${effectiveType}`);
+          await scaffoldBasicNextApp(projectPath, projectId);
         }
-      } else if (project.templateType === 'static-html') {
-        console.debug(
-          `[PreviewManager] Bootstrapping static HTML app for project ${projectId}`
-        );
-        await scaffoldStaticHtmlApp(projectPath, projectId);
-      } else if (project.templateType === 'flask') {
-        // Only scaffold if NO entry point exists
-        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
-        
-        if (!wsgiExists) {
-             console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
-             await scaffoldFlaskApp(projectPath, projectId);
-             await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
-        } else {
-             console.debug(`[PreviewManager] Internal flask check: found wsgi.py, skipping scaffold.`);
-             await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
-        }
-      } else {
-        console.debug(
-          `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
-        );
-        await scaffoldBasicNextApp(projectPath, projectId);
       }
+    } catch (e) {
+      queueLog(`[Warning] Phase 1 setup encountered an error: ${e instanceof Error ? e.message : e}`);
     }
 
     const previewBounds = resolvePreviewBounds();
@@ -1154,7 +1139,7 @@ class PreviewManager {
 
     // Ensure dependencies with the same per-project lock used by installDependencies
     const ensureWithLock = async () => {
-      if (project.templateType === 'flask') {
+      if (isFlaskProject) {
         // Python dependency check
         if (await fileExists(path.join(projectPath, 'requirements.txt'))) {
              log(Buffer.from('[PreviewManager] Installing/Updating Python dependencies...'));
@@ -1205,12 +1190,7 @@ class PreviewManager {
 
     const overrides = await collectEnvOverrides(projectPath);
 
-    // Determine effective project type early for port logic
-    const effectiveType = project.templateType === 'git-import' 
-      ? (project as any)._detectedType || 'custom'
-      : project.templateType;
-
-    const isFlaskProject = effectiveType === 'flask';
+    // env already includes dynamic port, and effectiveType/isFlaskProject calculated above
 
     // Filter out environment variables that could conflict with the child process.
     // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
