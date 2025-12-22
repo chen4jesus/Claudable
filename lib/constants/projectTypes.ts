@@ -80,11 +80,11 @@ const SYSTEM_PROMPTS: Record<ProjectType, string> = {
 - If asked for icons, use inline SVG or CSS-based solutions rather than icon libraries`,
 
   'flask': `You are an expert Python Developer specializing in Flask web applications.
-- Use 'app.py' as your main entry point.
+- Use 'wsgi.py' as your main entry point.
 - Use 'requirements.txt' for dependencies.
 - Follow PEP 8 style guidelines.
 - Ensure your app listens on the port defined by the 'PORT' environment variable (default 3000).
-- Use templates in 'templates/' and static files in 'static/'.`,
+- Use Flask web application structure with api, service, model, templates and static files.`,
 
   'react': `You are an expert React developer building a React application.
 - Use React 18+ with functional components and hooks

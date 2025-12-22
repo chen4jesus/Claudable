@@ -161,17 +161,17 @@ type DetectedProjectType = 'flask' | 'nextjs' | 'static-html' | 'react' | 'vue' 
 
 async function detectProjectType(projectPath: string): Promise<DetectedProjectType> {
   // Check for Flask (Python) project
-  const appPyPath = path.join(projectPath, 'app.py');
+  const wsgiPath = path.join(projectPath, 'wsgi.py');
   const requirementsTxtPath = path.join(projectPath, 'requirements.txt');
   
   try {
-    await fs.access(appPyPath);
-    const appPyContent = await fs.readFile(appPyPath, 'utf8');
-    if (appPyContent.includes('flask') || appPyContent.includes('Flask')) {
-      return 'flask';
+    // Check for wsgi.py
+    if (await fileExists(wsgiPath)) {
+        return 'flask';
     }
+  
   } catch {
-    // app.py doesn't exist, continue checking
+    // File doesn't exist, continue checking
   }
   
   // Check requirements.txt for Flask
@@ -285,11 +285,19 @@ async function collectEnvOverrides(projectPath: string): Promise<EnvOverrides> {
   return overrides;
 }
 
-async function enforceFlaskPort(projectPath: string, log: (msg: string) => void): Promise<void> {
-  const appPyPath = path.join(projectPath, 'app.py');
+async function enforceFlaskPort(projectPath: string, entryPoint: string, log: (msg: string) => void): Promise<void> {
+  const wsgiPyPath = path.join(projectPath, entryPoint);
   try {
-    if (await fileExists(appPyPath)) {
-      let content = await fs.readFile(appPyPath, 'utf8');
+    if (await fileExists(wsgiPyPath)) {
+      let content = await fs.readFile(wsgiPyPath, 'utf8');
+      
+      // If the file already uses os.environ.get('PORT'), assume it's correctly configured
+      // This prevents corrupting a well-formed wsgi.py
+      if (content.includes("os.environ.get('PORT'") || content.includes('os.environ.get("PORT"')) {
+        log(`[PreviewManager] ${entryPoint} already uses PORT environment variable, skipping modification.`);
+        return;
+      }
+      
       let changed = false;
 
       // Ensure 'import os' exists
@@ -299,43 +307,36 @@ async function enforceFlaskPort(projectPath: string, log: (msg: string) => void)
       }
 
       // Check for app.run - Allow spaces: app.run ( ... )
-      const appRunRegex = /app\.run\s*\((.*?)\)/s;
+      const appRunRegex = /app\.run\s*\(([^)]*)\)/;
       const match = content.match(appRunRegex);
 
       if (match) {
-        let args = match[1];
-        let newArgs = args;
-        const originalArgs = args;
-
+        const args = match[1];
+        
         // Check if port arg exists
-        // Match port=VALUE, where VALUE is anything until comma or end
         const portRegex = /port\s*=\s*([^,)\s]+)/;
         const portMatch = args.match(portRegex);
 
+        let newArgs: string;
         if (portMatch) {
           const originalValue = portMatch[1];
           // Replace existing port value with os.environ.get('PORT', <original>)
-          // Avoid double wrapping if already wrapped
-          if (!originalValue.includes('os.environ.get')) {
-             newArgs = args.replace(portRegex, `port=int(os.environ.get('PORT', ${originalValue}))`);
-          }
+          newArgs = args.replace(portRegex, `port=int(os.environ.get('PORT', ${originalValue}))`);
         } else {
-             // Append port arg
-             // Check if args is empty or just whitespace
-             if (!args.trim()) {
-                 newArgs = "host='0.0.0.0', port=int(os.environ.get('PORT', 5000))";
-             } else {
-                 newArgs = args + ", port=int(os.environ.get('PORT', 5000))";
-             }
+          // Append port arg
+          if (!args.trim()) {
+            newArgs = "host='0.0.0.0', port=int(os.environ.get('PORT', 5000))";
+          } else {
+            newArgs = args + ", port=int(os.environ.get('PORT', 5000))";
+          }
         }
         
-        if (newArgs !== originalArgs) {
-             content = content.replace(match[0], `app.run(${newArgs})`);
-             changed = true;
+        if (newArgs !== args) {
+          content = content.replace(match[0], `app.run(${newArgs})`);
+          changed = true;
         }
 
-        // CRITICAL: Ensure app.run() is inside if __name__ == '__main__': guard
-        // This prevents the Flask server from starting immediately on import
+        // Ensure app.run() is inside if __name__ == '__main__': guard
         const mainGuardRegex = /if\s+__name__\s*==\s*['"]__main__['"]\s*:/;
         const hasMainGuard = mainGuardRegex.test(content);
         
@@ -347,51 +348,19 @@ async function enforceFlaskPort(projectPath: string, log: (msg: string) => void)
           if (runMatch) {
             const indent = runMatch[1] || '';
             const appRunCall = runMatch[2];
-            // Replace the app.run() line with the guarded version
             const guardedCode = `\nif __name__ == '__main__':\n${indent}    ${appRunCall}`;
             content = content.replace(runMatch[0], guardedCode);
             changed = true;
             log('[PreviewManager] Wrapped app.run() in if __name__ == "__main__": guard');
           }
-        } else {
-          // Guard exists - verify app.run() is inside it
-          // Check if app.run() appears before the guard (which would be a problem)
-          const guardIndex = content.search(mainGuardRegex);
-          const appRunIndex = content.search(/app\.run\s*\(/);
-          
-          if (appRunIndex !== -1 && guardIndex !== -1 && appRunIndex < guardIndex) {
-            // app.run() is BEFORE the guard - need to move it inside
-            // Remove the app.run() line from its current location
-            const appRunLineRegex = /^[ \t]*app\.run\s*\([^)]*\)[ \t]*\n?/m;
-            const appRunLineMatch = content.match(appRunLineRegex);
-            
-            if (appRunLineMatch) {
-              const appRunLine = appRunLineMatch[0].trim();
-              // Remove from original location
-              content = content.replace(appRunLineRegex, '');
-              
-              // Find the main guard and add app.run() inside it
-              // Look for content after the guard
-              const guardMatch = content.match(/if\s+__name__\s*==\s*['"]__main__['"]\s*:\s*\n/);
-              if (guardMatch) {
-                const guardEndIndex = content.indexOf(guardMatch[0]) + guardMatch[0].length;
-                // Insert app.run() with proper indentation after the guard
-                const beforeGuard = content.slice(0, guardEndIndex);
-                const afterGuard = content.slice(guardEndIndex);
-                content = beforeGuard + `    ${appRunLine}\n` + afterGuard;
-                changed = true;
-                log('[PreviewManager] Moved app.run() inside existing if __name__ == "__main__": guard');
-              }
-            }
-          }
         }
       } else {
-          log('[PreviewManager] Could not find app.run() call in app.py to inject port.');
+        log(`[PreviewManager] Could not find app.run() call in ${entryPoint} to inject port.`);
       }
 
       if (changed) {
-          await fs.writeFile(appPyPath, content, 'utf8');
-          log('Injected dynamic port configuration into app.py');
+        await fs.writeFile(wsgiPyPath, content, 'utf8');
+        log(`Injected dynamic port configuration into ${entryPoint}`);
       }
     }
   } catch (e) {
@@ -617,7 +586,7 @@ async function ensureProjectRootStructure(
 
   const candidateDirs: { name: string; path: string }[] = [];
   // Flask convention directories - these should not be considered as separate projects
-  const flaskConventionDirs = ['templates', 'static', 'admin', 'blueprints', 'views', 'models', 'forms', 'utils', 'migrations'];
+  const flaskConventionDirs = ['app', 'templates', 'static', 'admin', 'blueprints', 'views', 'models', 'forms', 'utils', 'migrations'];
   
   for (const entry of entries) {
     if (!entry.isDirectory()) {
@@ -966,8 +935,9 @@ class PreviewManager {
         // Handle Flask projects from git imports
         if (detectedType === 'flask') {
           record('Setting up Flask project from git import...');
-          await scaffoldFlaskApp(projectPath, projectId);
-          await enforceFlaskPort(projectPath, record);
+          // Only scaffold if absolutely necessary (e.g. missing crucial files), but usually we respect the import
+          // For now, ensuring port binding on the likely entry point
+          await enforceFlaskPort(projectPath, 'wsgi.py', record);
         }
         // For other detected types, dependencies will be installed below
       } else if (project.templateType === 'static-html') {
@@ -976,7 +946,7 @@ class PreviewManager {
       } else if (project.templateType === 'flask') {
         record(`Bootstrapping Flask app for project ${projectId}`);
         await scaffoldFlaskApp(projectPath, projectId);
-        await enforceFlaskPort(projectPath, record);
+        await enforceFlaskPort(projectPath, 'wsgi.py', record);
       } else {
         record(`Bootstrapping minimal Next.js app for project ${projectId}`);
         await scaffoldBasicNextApp(projectPath, projectId);
@@ -1075,12 +1045,16 @@ class PreviewManager {
 
     try {
       if (project.templateType === 'flask') {
-        const appPyExists = await fileExists(path.join(projectPath, 'app.py'));
-        if (!appPyExists) {
+        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
+        
+        if (!wsgiExists) {
             console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
             await scaffoldFlaskApp(projectPath, projectId);
+            await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+        } else {
+            // If exists, ensure port binding is correct
+            await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
         }
-        await enforceFlaskPort(projectPath, queueLog);
       } else {
         await fs.access(path.join(projectPath, 'package.json'));
       }
@@ -1104,10 +1078,17 @@ class PreviewManager {
         );
         await scaffoldStaticHtmlApp(projectPath, projectId);
       } else if (project.templateType === 'flask') {
-         // Should be handled above, but fallback just in case
-         console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
-         await scaffoldFlaskApp(projectPath, projectId);
-         await enforceFlaskPort(projectPath, queueLog);
+        // Only scaffold if NO entry point exists
+        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
+        
+        if (!wsgiExists) {
+             console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+             await scaffoldFlaskApp(projectPath, projectId);
+             await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+        } else {
+             console.debug(`[PreviewManager] Internal flask check: found wsgi.py, skipping scaffold.`);
+             await enforceFlaskPort(projectPath, 'wsgi.py', queueLog);
+        }
       } else {
         console.debug(
           `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
@@ -1126,7 +1107,7 @@ class PreviewManager {
 
     console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
     
-    const ip = getLocalIpAddress();
+    const ip = 'localhost'; // Force localhost to avoid Windows Firewall issues with external IPs
     const initialUrl = `http://${ip}:${preferredPort}`;
 
     const env: NodeJS.ProcessEnv = {
@@ -1159,9 +1140,9 @@ class PreviewManager {
     const ensureWithLock = async () => {
       if (project.templateType === 'flask') {
         // Python dependency check
-        const venvExists = await directoryExists(path.join(projectPath, 'venv'));
-        if (!venvExists && await fileExists(path.join(projectPath, 'requirements.txt'))) {
-             log(Buffer.from('[PreviewManager] Installing Python dependencies...'));
+        if (await fileExists(path.join(projectPath, 'requirements.txt'))) {
+             log(Buffer.from('[PreviewManager] Installing/Updating Python dependencies...'));
+             // Always run install to ensure deps are up to date (pip is fast if satisfied)
              await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log);
         }
         return;
@@ -1208,7 +1189,17 @@ class PreviewManager {
 
     const overrides = await collectEnvOverrides(projectPath);
 
-    if (overrides.port && overrides.port !== previewProcess.port) {
+    // Determine effective project type early for port logic
+    const effectiveType = project.templateType === 'git-import' 
+      ? (project as any)._detectedType || 'custom'
+      : project.templateType;
+
+    const isFlaskProject = effectiveType === 'flask';
+
+    // For Flask projects, ALWAYS use the preview manager's dynamically assigned port.
+    // Do NOT use the project's .env PORT to avoid conflicts with Claudable's own port.
+    // For Node.js projects, we can respect the project's port preference.
+    if (!isFlaskProject && overrides.port && overrides.port !== previewProcess.port) {
       previewProcess.port = overrides.port;
       env.PORT = String(overrides.port);
       env.WEB_PORT = String(overrides.port);
@@ -1219,28 +1210,33 @@ class PreviewManager {
     
     // Update URL with effective port/url
     let resolvedUrl: string = `http://${ip}:${effectivePortFinal}`;
-    if (typeof overrides.url === 'string' && overrides.url.trim().length > 0) {
+    // For Flask, always use localhost URL; don't use project's NEXT_PUBLIC_APP_URL
+    if (!isFlaskProject && typeof overrides.url === 'string' && overrides.url.trim().length > 0) {
       resolvedUrl = overrides.url.trim();
     }
     env.NEXT_PUBLIC_APP_URL = resolvedUrl;
     previewProcess.url = resolvedUrl;
 
-    // Determine effective project type (use detected type for git-imports)
-    const effectiveType = project.templateType === 'git-import' 
-      ? (project as any)._detectedType || 'custom'
-      : project.templateType;
-
-    const isFlaskProject = effectiveType === 'flask';
+    // isFlaskProject and effectiveType already determined above
 
     if (isFlaskProject) {
        // Enforce dynamic port in source
-       await enforceFlaskPort(projectPath, queueLog);
+       const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
+       
+       // Prioritize wsgi.py -> app.py  
+       const entryPoint = wsgiExists ? 'wsgi.py' : 'app.py';
+       
+       await enforceFlaskPort(projectPath, entryPoint, queueLog);
 
        spawnCommand = await detectPythonCommand(env);
-       spawnArgs = ['app.py'];
+       spawnArgs = [entryPoint];
        // Ensure PORT env var is respected by Flask app
        env.PORT = String(effectivePortFinal);
-       log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand}`));
+       
+       // Set FLASK_APP to entry point
+       env.FLASK_APP = entryPoint;
+       
+       log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand} ${spawnArgs.join(' ')}`));
     } else {
         // Node/Next logic
         const packageJson = await readPackageJson(projectPath);
@@ -1667,18 +1663,48 @@ ${scriptContent}
     const scriptTag = `<!-- AI SMART EDIT INJECTION START --><script>${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
     
     // Determine where to inject based on project structure
-    // 1. Static HTML (index.html)
-    const indexHtmlPath = path.join(projectPath, 'index.html');
-    if (await fileExists(indexHtmlPath)) {
-      await this.injectIntoHtmlFile(indexHtmlPath, scriptTag, log);
-      return;
+    // Prioritize "Master" templates so the script appears on all pages
+
+    // 1. Flask Best Practice (app/templates/base.html)
+    const flaskBaseHtmlPath = path.join(projectPath, 'app', 'templates', 'base.html');
+    if (await fileExists(flaskBaseHtmlPath)) {
+       await this.injectIntoHtmlFile(flaskBaseHtmlPath, scriptTag, log);
+       return;
     }
 
-    // 2. Flask (templates/index.html)
+    // 2. Flask Scaffold Pattern (app/templates/layouts/main.html)
+    const flaskLayoutMainPath = path.join(projectPath, 'app', 'templates', 'layouts', 'main.html');
+    if (await fileExists(flaskLayoutMainPath)) {
+       await this.injectIntoHtmlFile(flaskLayoutMainPath, scriptTag, log);
+       return;
+    }
+
+    // 3. Simple Flask Pattern (templates/base.html)
+    const simpleFlaskBasePath = path.join(projectPath, 'templates', 'base.html');
+    if (await fileExists(simpleFlaskBasePath)) {
+       await this.injectIntoHtmlFile(simpleFlaskBasePath, scriptTag, log);
+       return;
+    }
+
+    // 4. Simple Flask Scaffold Pattern (templates/layouts/main.html)
+    const simpleFlaskLayoutMainPath = path.join(projectPath, 'templates', 'layouts', 'main.html');
+    if (await fileExists(simpleFlaskLayoutMainPath)) {
+       await this.injectIntoHtmlFile(simpleFlaskLayoutMainPath, scriptTag, log);
+       return;
+    }
+
+    // 5. Flask Fallback (templates/index.html)
     const flaskTemplatePath = path.join(projectPath, 'templates', 'index.html');
     if (await fileExists(flaskTemplatePath)) {
        await this.injectIntoHtmlFile(flaskTemplatePath, scriptTag, log);
        return;
+    }
+    
+    // 6. Static HTML Fallback (index.html)
+    const indexHtmlPath = path.join(projectPath, 'index.html');
+    if (await fileExists(indexHtmlPath)) {
+      await this.injectIntoHtmlFile(indexHtmlPath, scriptTag, log);
+      return;
     }
     
     // 3. Next.js App Router (app/layout.tsx)
