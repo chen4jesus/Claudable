@@ -55,6 +55,10 @@ export function cleanupSmartEditContent(content: string): string {
     result = result.replace(importPattern, '');
   }
   
+  // 5. Remove Source-ID attributes
+  const srcIdPattern = /\s*data-ai-src-id=["'][^"']*["']/g;
+  result = result.replace(srcIdPattern, '');
+  
   return result;
 }
 
@@ -141,4 +145,194 @@ export async function cleanupSmartEditScript(projectPath: string, log: (msg: str
   } catch {
     // File doesn't exist or already removed - ignore
   }
+}
+
+/**
+ * Tag content with unique Source-IDs for granular editing
+ */
+export function tagContentWithSourceIds(content: string, relPath: string): string {
+  let counter = 0;
+  // Normalize path and use it as a prefix to ensure uniqueness across files
+  const prefix = relPath.replace(/\\/g, '/').replace(/^\.\//, '');
+  
+  // Replace only opening tags of common elements that might be edited
+  const tagRegex = /<([a-zA-Z0-9]+)([^>]*?)(?=\/?>)/g;
+  
+  return content.replace(tagRegex, (match, tagName, attrs) => {
+    // Skip if already has an ID or is a system tag we don't want to edit
+    if (attrs.includes('data-ai-src-id') || ['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
+      return match;
+    }
+    
+    const srcId = `${prefix}::${counter++}`;
+    return `<${tagName}${attrs} data-ai-src-id="${srcId}"`;
+  });
+}
+
+/**
+ * Apply granular changes (from CSS selectors or Source-IDs) to source content
+ */
+export function applyGranularChanges(content: string, changes: any[]): string {
+  let result = content;
+
+  for (const change of changes) {
+    const { selector, srcId, type, value, attrName } = change;
+    
+    // Prioritize Source-ID if available
+    if (srcId) {
+      try {
+        if (type === 'html') {
+          result = updateElementHtmlBySrcId(result, srcId, value);
+        } else if (type === 'attr' && attrName) {
+          result = updateElementAttrBySrcId(result, srcId, attrName, value);
+        }
+        continue; // Successfully handled by srcId
+      } catch (e) {
+        console.warn(`[GranularSave] Failed to apply change for srcId "${srcId}":`, e);
+      }
+    }
+
+    // Fallback to selector-based matching (less precise)
+    if (selector) {
+      try {
+        if (type === 'html') {
+          result = updateElementHtml(result, selector, value);
+        } else if (type === 'attr' && attrName) {
+          result = updateElementAttr(result, selector, attrName, value);
+        }
+      } catch (e) {
+        console.warn(`[GranularSave] Failed to apply change for selector "${selector}":`, e);
+      }
+    }
+  }
+
+  return result;
+}
+
+function updateElementHtmlBySrcId(content: string, srcId: string, newHtml: string): string {
+  // Escape special characters in srcId for regex (though it should be mostly alphanumeric + / + ::)
+  const escapedId = srcId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(<[a-zA-Z0-9]+[^>]*\\bdata-ai-src-id=["']${escapedId}["'][^>]*>)([\\s\\S]*?)(<\\/([a-zA-Z0-9]+)>)`, 'i');
+  const match = content.match(regex);
+  
+  if (match) {
+    return content.replace(regex, `$1${newHtml}$3`);
+  }
+  throw new Error(`Element with data-ai-src-id="${srcId}" not found for HTML update`);
+}
+
+function updateElementAttrBySrcId(content: string, srcId: string, attrName: string, attrValue: string): string {
+  const escapedId = srcId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tagRegex = new RegExp(`(<[a-zA-Z0-9]+[^>]*\\bdata-ai-src-id=["']${escapedId}["'][^>]*>)`, 'i');
+  const match = content.match(tagRegex);
+  
+  if (match) {
+    const fullTag = match[1];
+    const attrRegex = new RegExp(`(\\b${attrName}=["'])([^"']*?)(["'])`, 'i');
+    
+    if (fullTag.match(attrRegex)) {
+      const updatedTag = fullTag.replace(attrRegex, `$1${attrValue}$3`);
+      return content.replace(fullTag, updatedTag);
+    } else {
+      const updatedTag = fullTag.includes('/>') 
+        ? fullTag.replace(/\s*\/>$/, ` ${attrName}="${attrValue}" />`)
+        : fullTag.replace(/>$/, ` ${attrName}="${attrValue}">`);
+      return content.replace(fullTag, updatedTag);
+    }
+  }
+  throw new Error(`Element with data-ai-src-id="${srcId}" not found for attribute update`);
+}
+
+function updateElementHtml(content: string, selector: string, newHtml: string): string {
+  // Simple ID-based matching is most reliable
+  if (selector.startsWith('#')) {
+    const id = selector.substring(1);
+    const regex = new RegExp(`(<[a-zA-Z0-9]+[^>]*\\bid=["']${id}["'][^>]*>)([\\s\\S]*?)(<\\/([a-zA-Z0-9]+)>)`, 'i');
+    const match = content.match(regex);
+    
+    if (match) {
+      // Basic sanity check: ensure closing tag matches opening tag (simplified)
+      return content.replace(regex, `$1${newHtml}$3`);
+    }
+  }
+
+  // Fallback or complex path matching: This is much harder without a parser.
+  // For now, only IDs are fully supported for high-precision saving.
+  // We can try a best-effort tag + class match for others.
+  const parts = selector.split(' > ');
+  const targetPart = parts[parts.length - 1];
+  
+  if (targetPart) {
+    const tagMatch = targetPart.match(/^([a-z0-9]+)/i);
+    const classes = targetPart.match(/\.([a-z0-9_-]+)/gi)?.map(c => c.substring(1));
+    
+    if (tagMatch) {
+      const tagName = tagMatch[1];
+      let classRegex = '';
+      if (classes && classes.length > 0) {
+        classRegex = classes.map(c => `(?=.*\\b${c}\\b)`).join('');
+      }
+      
+      const regex = new RegExp(`(<${tagName}[^>]*class=["'][^"']*${classRegex}[^"']*["'][^>]*>)([\\s\\S]*?)(<\\/${tagName}>)`, 'i');
+      if (content.match(regex)) {
+        return content.replace(regex, `$1${newHtml}$3`);
+      }
+    }
+  }
+
+  return content;
+}
+
+function updateElementAttr(content: string, selector: string, attrName: string, attrValue: string): string {
+  if (selector.startsWith('#')) {
+    const id = selector.substring(1);
+    const tagRegex = new RegExp(`(<[a-zA-Z0-9]+[^>]*\\bid=["']${id}["'][^>]*>)`, 'i');
+    const match = content.match(tagRegex);
+    
+    if (match) {
+      const fullTag = match[1];
+      const attrRegex = new RegExp(`(\\b${attrName}=["'])([^"']*?)(["'])`, 'i');
+      
+      if (fullTag.match(attrRegex)) {
+        const updatedTag = fullTag.replace(attrRegex, `$1${attrValue}$3`);
+        return content.replace(fullTag, updatedTag);
+      } else {
+        // Attribute not found, try to inject it before the closing bracket of the tag
+        const updatedTag = fullTag.replace(/>$/, ` ${attrName}="${attrValue}">`);
+        return content.replace(fullTag, updatedTag);
+      }
+    }
+  }
+
+  // Best-effort for tag + class
+  const parts = selector.split(' > ');
+  const targetPart = parts[parts.length - 1];
+  if (targetPart) {
+    const tagMatch = targetPart.match(/^([a-z0-9]+)/i);
+    const classes = targetPart.match(/\.([a-z0-9_-]+)/gi)?.map(c => c.substring(1));
+    
+    if (tagMatch) {
+      const tagName = tagMatch[1];
+      let classRegex = '';
+      if (classes && classes.length > 0) {
+        classRegex = classes.map(c => `(?=.*\\b${c}\\b)`).join('');
+      }
+      
+      const tagRegex = new RegExp(`(<${tagName}[^>]*class=["'][^"']*${classRegex}[^"']*["'][^>]*>)`, 'i');
+      const match = content.match(tagRegex);
+      if (match) {
+        const fullTag = match[1];
+        const attrRegex = new RegExp(`(\\b${attrName}=["'])([^"']*?)(["'])`, 'i');
+        if (fullTag.match(attrRegex)) {
+          const updatedTag = fullTag.replace(attrRegex, `$1${attrValue}$3`);
+          return content.replace(fullTag, updatedTag);
+        } else {
+          const updatedTag = fullTag.replace(/>$/, ` ${attrName}="${attrValue}">`);
+          return content.replace(fullTag, updatedTag);
+        }
+      }
+    }
+  }
+
+  return content;
 }

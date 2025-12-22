@@ -6,6 +6,14 @@
   let isEditMode = false;
   let overlay = null;
   let selectedOverlay = null;
+  let pendingChanges = {}; // selector -> { type, value, attrName? }
+
+  // --- Change Tracking ---
+  function recordChange(selector, type, value, attrName, srcId) {
+    const key = srcId || selector;
+    pendingChanges[key] = { type, value, attrName, selector, srcId };
+    console.log(`[AI Smart Edit] Recorded change for ${key}:`, pendingChanges[key]);
+  }
 
   // --- Overlay Management ---
   function createOverlay(id, color, zIndex) {
@@ -100,6 +108,7 @@
       html: el.outerHTML || '',
       innerHTML: el.innerHTML ? el.innerHTML.substring(0, 300).trim() : '',
       selector: getStableSelector(el),
+      srcId: el.getAttribute('data-ai-src-id') || null,
       parent: parent ? { tagName: parent.tagName.toLowerCase(), id: parent.id || '' } : null,
       url: window.location.href,
       route: window.location.pathname,
@@ -190,6 +199,7 @@
     document.querySelectorAll(textSelectors).forEach(el => {
       if (el.closest('#ai-smart-edit-hover, #ai-smart-edit-selected')) return;
       el.contentEditable = 'true';
+      el.addEventListener('input', handleContentInput);
     });
 
     // Divs with direct text content
@@ -198,6 +208,7 @@
       for (let node of el.childNodes) {
         if (node.nodeType === 3 && node.textContent.trim().length > 0) {
           el.contentEditable = 'true';
+          el.addEventListener('input', handleContentInput);
           break;
         }
       }
@@ -221,6 +232,7 @@
     // Remove contentEditable
     document.querySelectorAll('[contenteditable="true"]').forEach(el => {
       el.contentEditable = 'false';
+      el.removeEventListener('input', handleContentInput);
     });
 
     // Remove image handlers
@@ -234,6 +246,12 @@
     });
   }
 
+  function handleContentInput(e) {
+    const el = e.target;
+    const srcId = el.getAttribute('data-ai-src-id');
+    recordChange(getStableSelector(el), 'html', el.innerHTML, null, srcId);
+  }
+
   function handleImageClick(e) {
     if (!isEditMode) return;
     e.preventDefault();
@@ -242,6 +260,7 @@
     const img = e.target;
     const context = {
       selector: getStableSelector(img),
+      srcId: img.getAttribute('data-ai-src-id'),
       src: img.src,
       alt: img.alt || '',
       width: img.naturalWidth,
@@ -262,6 +281,7 @@
     const link = e.currentTarget;
     const context = {
       selector: getStableSelector(link),
+      srcId: link.getAttribute('data-ai-src-id'),
       href: link.getAttribute('href') || '',
       text: link.innerText || '',
       hasChildren: link.children.length > 0
@@ -278,6 +298,8 @@
       const img = document.querySelector(selector);
       if (img && img.tagName === 'IMG') {
         img.src = src;
+        const srcId = img.getAttribute('data-ai-src-id');
+        recordChange(selector, 'attr', src, 'src', srcId);
       }
     } catch (err) {
       console.error('[AI Smart Edit] Failed to update image:', err);
@@ -289,9 +311,12 @@
       const link = document.querySelector(selector);
       if (link && link.tagName === 'A') {
         link.href = href;
+        const srcId = link.getAttribute('data-ai-src-id');
+        recordChange(selector, 'attr', href, 'href', srcId);
         // Only update text if it's a simple text link (no child elements)
         if (text !== undefined && link.children.length === 0) {
           link.innerText = text;
+          recordChange(selector, 'html', text, null, srcId);
         }
       }
     } catch (err) {
@@ -343,10 +368,14 @@
       type: `${NAMESPACE}:PAGE_CONTENT`,
       payload: {
         html: htmlContent,
+        changes: Object.values(pendingChanges),
         route: window.location.pathname,
         filePath: window.__AI_SMART_EDIT_FILE__ || null
       }
     }, '*');
+
+    // Clear changes after save
+    pendingChanges = {};
   }
 
   // --- Message Handler ---

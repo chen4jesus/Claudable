@@ -203,6 +203,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
               body: JSON.stringify({
                 path: filePath,
                 content: data.payload.html,
+                changes: data.payload.changes,
               }),
             });
 
@@ -265,7 +266,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
           <div className="bg-white p-4 rounded-lg shadow-xl border border-gray-200 max-w-sm text-xs font-mono overflow-auto max-h-60">
             <div className="font-bold mb-2">Selected Element</div>
             <div className="mb-1"><span className="text-gray-500">Tag:</span> {lastSelected.tagName}</div>
-            <div className="mb-1"><span className="text-gray-500">ID:</span> {lastSelected.id || 'N/A'}</div>
+            <div className="mb-1"><span className="text-gray-500">Source ID:</span> {lastSelected.srcId || 'N/A'}</div>
             <div className="mb-1"><span className="text-gray-500">Class:</span> {lastSelected.className || 'N/A'}</div>
             <div className="mb-1"><span className="text-gray-500">Text:</span> {lastSelected.innerText.substring(0, 50)}...</div>
             <div className="mb-1"><span className="text-gray-500">Selector:</span> {lastSelected.selector}</div>

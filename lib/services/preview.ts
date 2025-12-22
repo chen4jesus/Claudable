@@ -10,7 +10,11 @@ import { findAvailablePort } from '@/lib/utils/ports';
 import { getProjectById, updateProject, updateProjectStatus } from './project';
 import { scaffoldBasicNextApp, scaffoldStaticHtmlApp, scaffoldFlaskApp } from '@/lib/utils/scaffold';
 import { PREVIEW_CONFIG } from '@/lib/config/constants';
-import { cleanupSmartEditScript, cleanupSmartEditContent } from './smart-edit-utils';
+import {
+  cleanupSmartEditScript,
+  cleanupSmartEditContent,
+  tagContentWithSourceIds,
+} from './smart-edit-utils';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -1511,7 +1515,7 @@ window.__AI_SMART_EDIT_FILE__ = "${relPath}";
 ${scriptContent}
 </script>
 <!-- AI SMART EDIT INJECTION END -->`;
-                    await this.injectIntoHtmlFile(fullPath, localScriptTag, log);
+                    await this.injectIntoHtmlFile(fullPath, relPath, localScriptTag, log);
                 }
             }
         } catch {
@@ -1592,7 +1596,7 @@ ${scriptContent}
     if (await fileExists(flaskBaseHtmlPath)) {
        const relPath = path.relative(projectPath, flaskBaseHtmlPath).replace(/\\/g, '/');
        const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(flaskBaseHtmlPath, localTag, log);
+       await this.injectIntoHtmlFile(flaskBaseHtmlPath, relPath, localTag, log);
        return;
     }
 
@@ -1601,7 +1605,7 @@ ${scriptContent}
     if (await fileExists(flaskLayoutMainPath)) {
        const relPath = path.relative(projectPath, flaskLayoutMainPath).replace(/\\/g, '/');
        const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(flaskLayoutMainPath, localTag, log);
+       await this.injectIntoHtmlFile(flaskLayoutMainPath, relPath, localTag, log);
        return;
     }
 
@@ -1610,7 +1614,7 @@ ${scriptContent}
     if (await fileExists(simpleFlaskBasePath)) {
        const relPath = path.relative(projectPath, simpleFlaskBasePath).replace(/\\/g, '/');
        const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(simpleFlaskBasePath, localTag, log);
+       await this.injectIntoHtmlFile(simpleFlaskBasePath, relPath, localTag, log);
        return;
     }
 
@@ -1619,7 +1623,7 @@ ${scriptContent}
     if (await fileExists(simpleFlaskLayoutMainPath)) {
        const relPath = path.relative(projectPath, simpleFlaskLayoutMainPath).replace(/\\/g, '/');
        const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(simpleFlaskLayoutMainPath, localTag, log);
+       await this.injectIntoHtmlFile(simpleFlaskLayoutMainPath, relPath, localTag, log);
        return;
     }
 
@@ -1628,7 +1632,7 @@ ${scriptContent}
     if (await fileExists(flaskTemplatePath)) {
        const relPath = path.relative(projectPath, flaskTemplatePath).replace(/\\/g, '/');
        const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-       await this.injectIntoHtmlFile(flaskTemplatePath, localTag, log);
+       await this.injectIntoHtmlFile(flaskTemplatePath, relPath, localTag, log);
        return;
     }
     
@@ -1637,7 +1641,7 @@ ${scriptContent}
     if (await fileExists(indexHtmlPath)) {
       const relPath = path.relative(projectPath, indexHtmlPath).replace(/\\/g, '/');
       const localTag = `<!-- AI SMART EDIT INJECTION START --><script>window.__AI_SMART_EDIT_FILE__ = "${relPath}"; ${scriptContent.trim()}</script><!-- AI SMART EDIT INJECTION END -->`;
-      await this.injectIntoHtmlFile(indexHtmlPath, localTag, log);
+      await this.injectIntoHtmlFile(indexHtmlPath, relPath, localTag, log);
       return;
     }
     
@@ -1837,9 +1841,12 @@ ${scriptContent}
     }
   }
 
-  private async injectIntoHtmlFile(filePath: string, injection: string, log: (msg: string) => void): Promise<void> {
+  private async injectIntoHtmlFile(filePath: string, relPath: string, injection: string, log: (msg: string) => void): Promise<void> {
     try {
       let content = await fs.readFile(filePath, 'utf8');
+      
+      // Tag all elements with source IDs for granular editing
+      content = tagContentWithSourceIds(content, relPath);
       
       // Check if already injected
       if (content.includes('AI SMART EDIT INJECTION START')) {

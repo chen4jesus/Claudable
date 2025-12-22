@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getProjectById } from '@/lib/services/project';
 import { previewManager } from '@/lib/services/preview';
-import { cleanupSmartEditScript, cleanupSmartEditContent } from '@/lib/services/smart-edit-utils';
+import { cleanupSmartEditScript, cleanupSmartEditContent, applyGranularChanges } from '@/lib/services/smart-edit-utils';
 
 interface RouteContext {
   params: Promise<{ project_id: string }>;
@@ -16,6 +16,7 @@ interface RouteContext {
 interface SavePageBody {
   path: string;
   content: string;
+  changes?: any[];
 }
 
 // Common template directories to search in for template-based projects (Flask, etc.)
@@ -133,33 +134,97 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    // Create backup (with injection markers removed)
-    const backupDir = path.join(projectRoot, 'backups');
-    await fs.mkdir(backupDir, { recursive: true });
+    // --- Grouping changes by file ---
+    const filesToUpdate = new Map<string, any[]>();
     
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const actualFileName = path.basename(finalAbsolutePath);
-    const backupFileName = `${actualFileName}.${timestamp}.bak`;
-    const backupPath = path.join(backupDir, backupFileName);
-    
-    // Read original file, clean it, and save as backup
-    const originalContent = await fs.readFile(finalAbsolutePath, 'utf-8');
-    const cleanedBackup = cleanupSmartEditContent(originalContent);
-    await fs.writeFile(backupPath, cleanedBackup, 'utf-8');
-    console.log(`[SavePage] Created clean backup: ${backupPath}`);
+    if (body.changes && Array.isArray(body.changes)) {
+      for (const change of body.changes) {
+        let changeFilePath = normalizedPath; // Default to main path
+        
+        if (change.srcId && change.srcId.includes('::')) {
+          changeFilePath = change.srcId.split('::')[0];
+        }
+        
+        if (!filesToUpdate.has(changeFilePath)) {
+          filesToUpdate.set(changeFilePath, []);
+        }
+        filesToUpdate.get(changeFilePath)!.push(change);
+      }
+    } else {
+      // Fallback: update the main file with the full content if no granular changes
+      filesToUpdate.set(normalizedPath, []);
+    }
 
+    const updatedFiles: string[] = [];
+    const savedBackups: string[] = [];
 
-    // Clean up AI_SMART_EDIT injection from content
-    let cleanedContent = cleanupSmartEditContent(content);
+    // --- Process each file ---
+    for (const [relPath, fileChanges] of filesToUpdate.entries()) {
+      let targetAbsolutePath = path.resolve(projectRoot, relPath);
+      let found = false;
 
-    // Write new content
-    await fs.writeFile(finalAbsolutePath, cleanedContent, 'utf-8');
-    console.log(`[SavePage] Updated file: ${finalAbsolutePath}`);
+      // Try relative path first
+      try {
+        const stats = await fs.stat(targetAbsolutePath);
+        if (stats.isFile()) found = true;
+      } catch {
+        // Search in template directories
+        const fileName = path.basename(relPath);
+        const candidates = HOME_SYNONYMS.includes(fileName.toLowerCase()) ? HOME_SYNONYMS : [fileName];
+        for (const tplDir of TEMPLATE_DIRS) {
+          for (const cand of candidates) {
+            const candPath = path.resolve(projectRoot, tplDir, cand);
+            try {
+              const s = await fs.stat(candPath);
+              if (s.isFile()) {
+                targetAbsolutePath = candPath;
+                found = true;
+                break;
+              }
+            } catch {}
+          }
+          if (found) break;
+        }
+      }
 
-    // Also cleanup layout.tsx and app.tsx if they exist (remove injected scripts)
+      if (!found) {
+        console.warn(`[SavePage] Could not locate file to update: ${relPath}`);
+        continue;
+      }
+
+      // Create backup
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const actualFileName = path.basename(targetAbsolutePath);
+      const backupDir = path.join(projectRoot, 'backups');
+      await fs.mkdir(backupDir, { recursive: true });
+      const backupPath = path.join(backupDir, `${actualFileName}.${timestamp}.bak`);
+      
+      const originalFileContent = await fs.readFile(targetAbsolutePath, 'utf-8');
+      const cleanedBackup = cleanupSmartEditContent(originalFileContent);
+      await fs.writeFile(backupPath, cleanedBackup, 'utf-8');
+      savedBackups.push(path.relative(projectRoot, backupPath).replace(/\\/g, '/'));
+
+      // Apply changes
+      let contentToWrite: string;
+      if (fileChanges.length > 0) {
+        console.log(`[SavePage] Applying ${fileChanges.length} changes to ${relPath}...`);
+        contentToWrite = applyGranularChanges(originalFileContent, fileChanges);
+        contentToWrite = cleanupSmartEditContent(contentToWrite);
+      } else if (relPath === normalizedPath) {
+        // If it's the main file and no granular changes, use the provided full content
+        contentToWrite = cleanupSmartEditContent(content);
+      } else {
+        // Skip files that have no changes and aren't the main file
+        continue;
+      }
+
+      await fs.writeFile(targetAbsolutePath, contentToWrite, 'utf-8');
+      updatedFiles.push(path.relative(projectRoot, targetAbsolutePath).replace(/\\/g, '/'));
+      console.log(`[SavePage] Updated file: ${targetAbsolutePath}`);
+    }
+
+    // Cleanup and re-inject
     await cleanupInjectedFiles(project_id, projectRoot);
-
-    // Re-inject for the active session (since we just cleaned it up from disk)
     try {
       await previewManager.injectRoute(project_id, normalizedPath);
     } catch (e) {
@@ -169,8 +234,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({
       success: true,
       data: {
-        path: path.relative(projectRoot, finalAbsolutePath).replace(/\\/g, '/'),
-        backupPath: path.relative(projectRoot, backupPath).replace(/\\/g, '/'),
+        updatedFiles,
+        backups: savedBackups,
+        // For backward compatibility
+        path: updatedFiles[0] || normalizedPath,
+        backupPath: savedBackups[0] || '',
       },
     });
   } catch (error) {
