@@ -93,6 +93,8 @@ EXPOSE 3000-65535
 # Set working directory for claude user
 WORKDIR /var/local/Claudable
 
+ENV HOSTNAME "0.0.0.0"
+
 ENTRYPOINT ["docker-entrypoint.sh"]
 
 # 15. npm start (runs as claude via entrypoint gosu)

@@ -326,7 +326,7 @@ async function enforceFlaskPort(projectPath: string, entryPoint: string, log: (m
         } else {
           // Append port arg
           if (!args.trim()) {
-            newArgs = "host='localhost', port=int(os.environ.get('PORT', 5000))";
+            newArgs = "host='0.0.0.0', port=int(os.environ.get('PORT', 5000))";
           } else {
             newArgs = args + ", port=int(os.environ.get('PORT', 5000))";
           }
@@ -1063,7 +1063,7 @@ class PreviewManager {
 
     console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
     
-    const ip = 'localhost'; 
+    const ip = '0.0.0.0'; // Use 0.0.0.0 instead of localhost to allow network access in Docker
     const initialUrl = `http://${ip}:${preferredPort}`;
 
     const env: NodeJS.ProcessEnv = {
@@ -1282,7 +1282,7 @@ class PreviewManager {
         if (hasPredev) {
           await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
         }
-         spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal)];
+         spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
     }
 
     // Inject Smart Edit Script

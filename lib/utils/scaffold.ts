@@ -1479,9 +1479,9 @@ try:
     if __name__ == '__main__':
         # PORT is set by the preview manager to the dynamically assigned preview port
         port = int(os.environ.get('PORT', 3000))
-        # Bind specifically to localhost for consistent behavior on Windows
+        # Bind specifically to 0.0.0.0 for consistent behavior on Windows
         # Disable reloader to prevent forking issues
-        app.run(host='localhost', port=port, debug=True, use_reloader=False)
+        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
 
 except Exception as e:
     import traceback
@@ -1577,7 +1577,7 @@ COPY . .
 EXPOSE 8000
 
 # Run with gunicorn
-CMD ["gunicorn", "--bind", "localhost:3000", "wsgi:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "wsgi:app"]
 `
   );
 
