@@ -208,10 +208,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       let contentToWrite: string;
       if (fileChanges.length > 0) {
         console.log(`[SavePage] Applying ${fileChanges.length} changes to ${relPath}...`);
-        contentToWrite = applyGranularChanges(originalFileContent, fileChanges);
+        contentToWrite = applyGranularChanges(originalFileContent, fileChanges, relPath);
         contentToWrite = cleanupSmartEditContent(contentToWrite);
       } else if (relPath === normalizedPath) {
         // If it's the main file and no granular changes, use the provided full content
+        // CRITICAL: Prevent layout files (base.html, layout.tsx, etc.) from being overwritten with 
+        // full rendered HTML, which causes "flattening" and duplication.
+        const isLayoutFile = /base\.html$|layout\.(tsx|js|html)$|main\.html$|_app\.(tsx|js)$|header\.html$|footer\.html$/.test(relPath.toLowerCase());
+        if (isLayoutFile) {
+          console.warn(`[SavePage] Skipping full content write for layout file: ${relPath}. Only granular changes allowed.`);
+          continue;
+        }
         contentToWrite = cleanupSmartEditContent(content);
       } else {
         // Skip files that have no changes and aren't the main file
@@ -221,6 +228,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       await fs.writeFile(targetAbsolutePath, contentToWrite, 'utf-8');
       updatedFiles.push(path.relative(projectRoot, targetAbsolutePath).replace(/\\/g, '/'));
       console.log(`[SavePage] Updated file: ${targetAbsolutePath}`);
+
+      // Sync the shadow baseline for the next edit session
+      try {
+        const relativeTarget = path.relative(projectRoot, targetAbsolutePath).replace(/\\/g, '/');
+        await previewManager.updateProjectFileBaseline(project_id, relativeTarget);
+      } catch (e) {
+        console.error(`[SavePage] Failed to sync baseline: ${e}`);
+      }
     }
 
     // Cleanup and re-inject
