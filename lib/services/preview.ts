@@ -1063,7 +1063,7 @@ class PreviewManager {
 
     console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
     
-    const ip = '0.0.0.0'; // Use 0.0.0.0 instead of localhost to allow network access in Docker
+    const ip = getLocalIpAddress(); // Use 0.0.0.0 instead of localhost to allow network access in Docker
     const initialUrl = `http://${ip}:${preferredPort}`;
 
     const env: NodeJS.ProcessEnv = {
@@ -1129,7 +1129,8 @@ class PreviewManager {
         
         if (detectedType === 'flask') {
           console.debug(`[PreviewManager] Setting up Flask project from git import`);
-          // Flask setup will be done by enforceFlaskPort below
+          await scaffoldFlaskApp(projectPath, projectId);
+          await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         }
       } else if (project.templateType === 'static-html') {
         console.debug(
