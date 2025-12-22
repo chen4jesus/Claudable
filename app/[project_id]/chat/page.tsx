@@ -5,7 +5,7 @@ import { MotionDiv, MotionH3, MotionP, MotionButton } from '@/lib/motion';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight, FaRedo } from 'react-icons/fa';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Trash2, Pencil } from 'lucide-react';
 import { SiTypescript, SiGo, SiRuby, SiSvelte, SiJson, SiYaml, SiCplusplus } from 'react-icons/si';
 import { VscJson } from 'react-icons/vsc';
 import ChatLog from '@/components/chat/ChatLog';
@@ -86,12 +86,15 @@ interface TreeViewProps {
   onToggleFolder: (path: string) => void;
   onSelectFile: (path: string) => void;
   onLoadFolder: (path: string) => Promise<void>;
+  onDelete?: (path: string, type: 'file' | 'dir') => void;
+  onRename?: (path: string, type: 'file' | 'dir') => void;
+  onMove?: (oldPath: string, newParentPath: string) => void;
   level: number;
   parentPath?: string;
   getFileIcon: (entry: Entry) => React.ReactElement;
 }
 
-function TreeView({ entries, selectedFile, expandedFolders, folderContents, onToggleFolder, onSelectFile, onLoadFolder, level, parentPath = '', getFileIcon }: TreeViewProps) {
+function TreeView({ entries, selectedFile, expandedFolders, folderContents, onToggleFolder, onSelectFile, onLoadFolder, onDelete, onRename, onMove, level, parentPath = '', getFileIcon }: TreeViewProps) {
   // Ensure entries is an array
   if (!entries || !Array.isArray(entries)) {
     return null;
@@ -105,6 +108,8 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
     // Then alphabetical
     return a.path.localeCompare(b.path);
   });
+
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
 
   return (
     <>
@@ -126,10 +131,43 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
         return (
           <div key={entryKey}>
             <div
-              className={`group flex items-center h-[22px] px-2 cursor-pointer ${
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', fullPath);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(e) => {
+                if (entry.type === 'dir') {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDragEnter={(e) => {
+                if (entry.type === 'dir') {
+                  setDragOverPath(fullPath);
+                }
+              }}
+              onDragLeave={(e) => {
+                if (entry.type === 'dir') {
+                  setDragOverPath(null);
+                }
+              }}
+              onDrop={(e) => {
+                if (entry.type === 'dir') {
+                  e.preventDefault();
+                  setDragOverPath(null);
+                  const sourcePath = e.dataTransfer.getData('text/plain');
+                  if (sourcePath && sourcePath !== fullPath && !sourcePath.startsWith(fullPath + '/')) {
+                    onMove?.(sourcePath, fullPath);
+                  }
+                }
+              }}
+              className={`group flex items-center h-[24px] px-2 cursor-pointer transition-colors ${
                 selectedFile === fullPath 
-                  ? 'bg-blue-100 ' 
-                  : 'hover:bg-gray-100 '
+                  ? 'bg-blue-100' 
+                  : dragOverPath === fullPath
+                  ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+                  : 'hover:bg-gray-100'
               }`}
               style={{ paddingLeft: `${8 + indent}px` }}
               onClick={async () => {
@@ -165,11 +203,35 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
               </span>
               
               {/* File/Folder name */}
-              <span className={`text-[13px] leading-[22px] ${
-                selectedFile === fullPath ? 'text-blue-700 ' : 'text-gray-700 '
+              <span className={`text-[13px] leading-[22px] flex-1 truncate ${
+                selectedFile === fullPath ? 'text-blue-700 font-medium' : 'text-gray-700'
               }`} style={{ fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
-                {level === 0 ? (entry.path.split('/').pop() || entry.path) : (entry.path.split('/').pop() || entry.path)}
+                {fullPath.split('/').pop() || fullPath}
               </span>
+
+              {/* Action Buttons (Visible on hover) */}
+              <div className="hidden group-hover:flex items-center gap-1.5 ml-1">
+                <button
+                  title="Rename"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRename?.(fullPath, entry.type);
+                  }}
+                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-white rounded transition-colors"
+                >
+                  <Pencil size={12} />
+                </button>
+                <button
+                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete?.(fullPath, entry.type);
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-500 hover:bg-white rounded transition-colors"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
             </div>
             
             {/* Render children if expanded */}
@@ -182,6 +244,9 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
                 onToggleFolder={onToggleFolder}
                 onSelectFile={onSelectFile}
                 onLoadFolder={onLoadFolder}
+                onDelete={onDelete}
+                onRename={onRename}
+                onMove={onMove}
                 level={level + 1}
                 parentPath={fullPath}
                 getFileIcon={getFileIcon}
@@ -1068,6 +1133,92 @@ const persistProjectPreferences = useCallback(
       setSelectedFile(path);
     }
   }, [projectId, hasUnsavedChanges, selectedFile]);
+  
+  const handleDeletePath = useCallback(async (path: string, type: 'file' | 'dir') => {
+    const confirmMsg = `Are you sure you want to delete this ${type === 'dir' ? 'directory' : 'file'}?${type === 'dir' ? '\nEverything inside it will be permanently removed.' : ''}`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const r = await fetch(`${API_BASE}/api/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`, {
+        method: 'DELETE',
+      });
+      if (r.ok) {
+        // Refresh the tree
+        loadTree('.');
+        if (selectedFile === path || selectedFile.startsWith(path + '/')) {
+          setSelectedFile('');
+          setContent('');
+          setEditedContent('');
+        }
+      } else {
+        const error = await r.json();
+        alert(`Failed to delete: ${error.details || error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete path');
+    }
+  }, [projectId, loadTree, selectedFile]);
+
+  const handleRenamePath = useCallback(async (path: string) => {
+    const oldName = path.split('/').pop() || '';
+    const newName = window.prompt('Enter new name:', oldName);
+    if (!newName || newName === oldName) return;
+
+    const parentPath = path.split('/').slice(0, -1).join('/');
+    const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+
+    try {
+      const r = await fetch(`${API_BASE}/api/projects/${projectId}/files/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath: path, newPath }),
+      });
+      if (r.ok) {
+        loadTree('.');
+        if (selectedFile === path) {
+          setSelectedFile(newPath);
+        } else if (selectedFile.startsWith(path + '/')) {
+          setSelectedFile(selectedFile.replace(path, newPath));
+        }
+      } else {
+        const error = await r.json();
+        alert(`Failed to rename: ${error.details || error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Rename error:', error);
+      alert('Failed to rename path');
+    }
+  }, [projectId, loadTree, selectedFile]);
+
+  const handleMovePath = useCallback(async (oldPath: string, newParentPath: string) => {
+    const fileName = oldPath.split('/').pop() || '';
+    const newPath = newParentPath === '.' ? fileName : `${newParentPath}/${fileName}`;
+    
+    if (oldPath === newPath) return;
+
+    try {
+      const r = await fetch(`${API_BASE}/api/projects/${projectId}/files/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath, newPath }),
+      });
+      if (r.ok) {
+        loadTree('.');
+        if (selectedFile === oldPath) {
+          setSelectedFile(newPath);
+        } else if (selectedFile.startsWith(oldPath + '/')) {
+          setSelectedFile(selectedFile.replace(oldPath, newPath));
+        }
+      } else {
+        const error = await r.json();
+        alert(`Failed to move: ${error.details || error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Move error:', error);
+      alert('Failed to move path');
+    }
+  }, [projectId, loadTree, selectedFile]);
 
   // Reload currently selected file
   const reloadCurrentFile = useCallback(async () => {
@@ -3019,6 +3170,9 @@ const persistProjectPreferences = useCallback(
                         onToggleFolder={toggleFolder}
                         onSelectFile={openFile}
                         onLoadFolder={handleLoadFolder}
+                        onDelete={handleDeletePath}
+                        onRename={handleRenamePath}
+                        onMove={handleMovePath}
                         level={0}
                         parentPath=""
                         getFileIcon={getFileIcon}

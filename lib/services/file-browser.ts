@@ -262,3 +262,80 @@ export async function writeProjectFileContent(
     throw new FileBrowserError('Failed to write file', 500);
   }
 }
+
+export async function deleteProjectFile(
+  projectId: string,
+  filePath: string
+): Promise<void> {
+  const project = await getProjectById(projectId);
+  if (!project) {
+    throw new FileBrowserError('Project not found', 404);
+  }
+
+  const repoRoot = resolveRepoRoot(project);
+  const normalizedPath = normalizeRelativePath(filePath);
+  
+  // Prevent deleting the project root
+  if (normalizedPath === '.' || normalizedPath === '') {
+    throw new FileBrowserError('Cannot delete project root', 400);
+  }
+
+  const absolutePath = await resolveSafePath(repoRoot, normalizedPath);
+
+  try {
+    // Check if it exists
+    await fs.access(absolutePath);
+    
+    // rm handles both files and directories (recursive)
+    await fs.rm(absolutePath, { recursive: true, force: true });
+  } catch (error) {
+    if ((error as any).code === 'ENOENT') {
+       throw new FileBrowserError('File or directory not found', 404);
+    }
+    console.error('[FileBrowser] Failed to delete path:', error);
+    throw new FileBrowserError('Failed to delete file or directory', 500);
+  }
+}
+
+export async function moveProjectFile(
+  projectId: string,
+  oldPath: string,
+  newPath: string
+): Promise<void> {
+  const project = await getProjectById(projectId);
+  if (!project) {
+    throw new FileBrowserError('Project not found', 404);
+  }
+
+  const repoRoot = resolveRepoRoot(project);
+  const normalizedOld = normalizeRelativePath(oldPath);
+  const normalizedNew = normalizeRelativePath(newPath);
+
+  if (normalizedOld === '.' || normalizedOld === '') {
+    throw new FileBrowserError('Cannot move project root', 400);
+  }
+
+  if (normalizedNew === '.' || normalizedNew === '') {
+    throw new FileBrowserError('Cannot move to project root destination', 400);
+  }
+
+  const absoluteOld = await resolveSafePath(repoRoot, normalizedOld);
+  const absoluteNew = await resolveSafePath(repoRoot, normalizedNew);
+
+  // Ensure destination parent directory exists
+  const newDir = path.dirname(absoluteNew);
+  try {
+    await fs.access(newDir);
+  } catch {
+    // If parent doesn't exist, we could create it, but it's safer to require it to exist
+    // or at least warn. For rename it usually exists.
+    throw new FileBrowserError('Destination directory does not exist', 400);
+  }
+
+  try {
+    await fs.rename(absoluteOld, absoluteNew);
+  } catch (error) {
+    console.error('[FileBrowser] Failed to move path:', error);
+    throw new FileBrowserError('Failed to move or rename file/directory', 500);
+  }
+}

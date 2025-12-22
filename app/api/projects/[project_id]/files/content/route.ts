@@ -96,3 +96,42 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const { project_id } = await params;
+    const url = new URL(request.url);
+    const filePath = url.searchParams.get('path');
+
+    if (!filePath) {
+      return NextResponse.json(
+        { success: false, error: 'path query parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    const { deleteProjectFile } = await import('@/lib/services/file-browser');
+    await deleteProjectFile(project_id, filePath);
+
+    return NextResponse.json({
+      success: true,
+      data: { path: filePath },
+    });
+  } catch (error) {
+    if (error instanceof FileBrowserError) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: error.status }
+      );
+    }
+
+    console.error('[API] Failed to delete project path:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete project path',
+      },
+      { status: 500 }
+    );
+  }
+}
