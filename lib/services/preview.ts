@@ -292,13 +292,6 @@ async function enforceFlaskPort(projectPath: string, entryPoint: string, log: (m
     if (await fileExists(wsgiPyPath)) {
       let content = await fs.readFile(wsgiPyPath, 'utf8');
       
-      // If the file already uses os.environ.get('PORT'), assume it's correctly configured
-      // This prevents corrupting a well-formed wsgi.py
-      if (content.includes("os.environ.get('PORT'") || content.includes('os.environ.get("PORT"')) {
-        log(`[PreviewManager] ${entryPoint} already uses PORT environment variable, skipping modification.`);
-        return;
-      }
-      
       let changed = false;
 
       // Ensure 'import os' exists
@@ -318,17 +311,40 @@ async function enforceFlaskPort(projectPath: string, entryPoint: string, log: (m
         const portRegex = /port\s*=\s*([^,)\s]+)/;
         const portMatch = args.match(portRegex);
 
-        let newArgs: string;
+        // Check if host arg exists
+        const hostRegex = /host\s*=\s*([^,)\s]+)/;
+        const hostMatch = args.match(hostRegex);
+
+        let newArgs = args;
+
+        // Ensure host='0.0.0.0' is present
+        if (hostMatch) {
+          // Replace existing host value with '0.0.0.0'
+          const hostValue = hostMatch[1];
+          if (hostValue !== "'0.0.0.0'" && hostValue !== '"0.0.0.0"') {
+             newArgs = newArgs.replace(hostRegex, "host='0.0.0.0'");
+          }
+        } else {
+          // Append host arg
+          if (!newArgs.trim()) {
+            newArgs = "host='0.0.0.0'";
+          } else {
+            newArgs = "host='0.0.0.0', " + newArgs;
+          }
+        }
+
+        // Ensure port=int(os.environ.get('PORT', ...)) is present
         if (portMatch) {
           const originalValue = portMatch[1];
-          // Replace existing port value with os.environ.get('PORT', <original>)
-          newArgs = args.replace(portRegex, `port=int(os.environ.get('PORT', ${originalValue}))`);
+          if (!originalValue.includes("os.environ.get('PORT'")) {
+            newArgs = newArgs.replace(portRegex, `port=int(os.environ.get('PORT', ${originalValue}))`);
+          }
         } else {
-          // Append port arg
-          if (!args.trim()) {
-            newArgs = "host='0.0.0.0', port=int(os.environ.get('PORT', 5000))";
+          // Append port arg if not present
+          if (!newArgs.trim()) {
+            newArgs = "port=int(os.environ.get('PORT', 5000))";
           } else {
-            newArgs = args + ", port=int(os.environ.get('PORT', 5000))";
+            newArgs = newArgs + ", port=int(os.environ.get('PORT', 5000))";
           }
         }
         
@@ -356,16 +372,16 @@ async function enforceFlaskPort(projectPath: string, entryPoint: string, log: (m
           }
         }
       } else {
-        log(`[PreviewManager] Could not find app.run() call in ${entryPoint} to inject port.`);
+        log(`[PreviewManager] Could not find app.run() call in ${entryPoint} to inject port/host.`);
       }
 
       if (changed) {
         await fs.writeFile(wsgiPyPath, content, 'utf8');
-        log(`Injected dynamic port configuration into ${entryPoint}`);
+        log(`Injected dynamic port and host configuration into ${entryPoint}`);
       }
     }
   } catch (e) {
-    log(`Failed to enforce Flask port: ${e}`);
+    log(`Failed to enforce Flask port/host: ${e}`);
   }
 }
 
@@ -676,29 +692,33 @@ async function waitForPreviewReady(
   url: string,
   log: (chunk: Buffer | string) => void,
   timeoutMs = 30_000,
-  intervalMs = 1_000
+  intervalMs = 1_000,
+  localUrl?: string
 ) {
   const start = Date.now();
   let attempts = 0;
 
+  // If localUrl is provided, we prefer it for internal checks
+  const checkUrl = localUrl || url;
+
   while (Date.now() - start < timeoutMs) {
     attempts += 1;
     try {
-      const response = await fetch(url, { method: 'HEAD' });
+      const response = await fetch(checkUrl, { method: 'HEAD' });
       if (response.ok) {
         log(
           Buffer.from(
-            `[PreviewManager] Preview server responded after ${attempts} attempt(s).`
+            `[PreviewManager] Preview server responded at ${checkUrl} after ${attempts} attempt(s).`
           )
         );
         return true;
       }
       if (response.status === 405 || response.status === 501) {
-        const getResponse = await fetch(url, { method: 'GET' });
+        const getResponse = await fetch(checkUrl, { method: 'GET' });
         if (getResponse.ok) {
           log(
             Buffer.from(
-              `[PreviewManager] Preview server responded to GET after ${attempts} attempt(s).`
+              `[PreviewManager] Preview server responded to GET at ${checkUrl} after ${attempts} attempt(s).`
             )
           );
           return true;
@@ -708,7 +728,7 @@ async function waitForPreviewReady(
       if (attempts === 1) {
         log(
           Buffer.from(
-            `[PreviewManager] Waiting for preview server at ${url} (${error instanceof Error ? error.message : String(error)
+            `[PreviewManager] Waiting for preview server at ${checkUrl} (${error instanceof Error ? error.message : String(error)
             }).`
           )
         );
@@ -721,7 +741,7 @@ async function waitForPreviewReady(
 
   log(
     Buffer.from(
-      `[PreviewManager] Preview server did not respond within ${timeoutMs}ms; continuing regardless.`
+      `[PreviewManager] Preview server did not respond at ${checkUrl} within ${timeoutMs}ms; continuing regardless.`
     )
   );
   return false;
@@ -1361,8 +1381,9 @@ class PreviewManager {
       log(Buffer.from(`Preview process failed: ${error.message}`));
     });
 
-    console.error(`[PreviewManager DEBUG] Waiting for preview ready at ${previewProcess.url}...`);
-    await waitForPreviewReady(previewProcess.url, log).catch((err) => {
+    const internalUrl = `http://localhost:${previewProcess.port}`;
+    console.error(`[PreviewManager DEBUG] Waiting for preview ready at ${previewProcess.url} (internal check: ${internalUrl})...`);
+    await waitForPreviewReady(previewProcess.url, log, 30000, 1000, internalUrl).catch((err) => {
       console.error(`[PreviewManager DEBUG] waitForPreviewReady failed: ${err}`);
     });
 

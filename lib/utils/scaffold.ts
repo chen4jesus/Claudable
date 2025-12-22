@@ -499,7 +499,7 @@ console.debug(\`📂 Serving directory: \${serveTarget}\`);
 
 const child = spawn(
   'npx',
-  ['serve', '-s', serveTarget, '-p', String(port)],
+  ['serve', '-s', serveTarget, '-p', String(port), '-l', '0.0.0.0'],
   {
     cwd: projectRoot,
     stdio: 'inherit',
