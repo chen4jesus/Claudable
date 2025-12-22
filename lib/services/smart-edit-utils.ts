@@ -473,10 +473,11 @@ function updateElementAttrBySrcId(content: string, srcId: string, attrName: stri
   
   if (match) {
     const fullTag = match[1];
-    const attrRegex = new RegExp(`(\\b${attrName}=["'])([^"']*?)(["'])`, 'i');
+    // Use a regex with backreferences to match quotes correctly: (\2) matches whatever (["']) matched
+    const attrRegex = new RegExp(`(\\b${attrName}=)(["'])(.*?)\\2`, 'i');
     
     if (fullTag.match(attrRegex)) {
-      const updatedTag = fullTag.replace(attrRegex, `$1${attrValue}$3`);
+      const updatedTag = fullTag.replace(attrRegex, `$1$2${attrValue}$2`);
       return content.replace(fullTag, updatedTag);
     } else {
       const updatedTag = fullTag.includes('/>') 
@@ -536,10 +537,10 @@ function updateElementAttr(content: string, selector: string, attrName: string, 
     
     if (match) {
       const fullTag = match[1];
-      const attrRegex = new RegExp(`(\\b${attrName}=["'])([^"']*?)(["'])`, 'i');
+      const attrRegex = new RegExp(`(\\b${attrName}=)(["'])(.*?)\\2`, 'i');
       
       if (fullTag.match(attrRegex)) {
-        const updatedTag = fullTag.replace(attrRegex, `$1${attrValue}$3`);
+        const updatedTag = fullTag.replace(attrRegex, `$1$2${attrValue}$2`);
         return content.replace(fullTag, updatedTag);
       } else {
         // Attribute not found, try to inject it before the closing bracket of the tag
@@ -567,9 +568,9 @@ function updateElementAttr(content: string, selector: string, attrName: string, 
       const match = content.match(tagRegex);
       if (match) {
         const fullTag = match[1];
-        const attrRegex = new RegExp(`(\\b${attrName}=["'])([^"']*?)(["'])`, 'i');
+        const attrRegex = new RegExp(`(\\b${attrName}=)(["'])(.*?)\\2`, 'i');
         if (fullTag.match(attrRegex)) {
-          const updatedTag = fullTag.replace(attrRegex, `$1${attrValue}$3`);
+          const updatedTag = fullTag.replace(attrRegex, `$1$2${attrValue}$2`);
           return content.replace(fullTag, updatedTag);
         } else {
           const updatedTag = fullTag.replace(/>$/, ` ${attrName}="${attrValue}">`);
