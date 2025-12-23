@@ -20,6 +20,7 @@ const DEFAULT_GITIGNORE_ENTRIES = [
   '# Build artifacts',
   'dist/',
   'build/',
+  '.claudable/',
   '.turbo/',
   '',
   '# Environment files',
