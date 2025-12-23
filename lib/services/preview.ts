@@ -1475,8 +1475,7 @@ class PreviewManager {
   }
 
   // ... (getStatus, getLogs remain)
-
-  private async injectAllHtmlFiles(projectId: string, masterFilePath?: string): Promise<void> {
+ private async injectAllHtmlFiles(projectId: string, masterFilePath: string | undefined): Promise<void> {
     const project = await getProjectById(projectId);
     if (!project) return;
 
@@ -1492,9 +1491,9 @@ class PreviewManager {
     } catch {
       return;
     }
-
+    
+    // 2. Inject into ALL HTML files (recursively find .html)
     const log = (msg: string) => console.debug(`[PreviewManager] [Inject] ${msg}`);
-    const normalizedMasterPath = masterFilePath ? path.relative(projectPath, masterFilePath).replace(/\\/g, '/') : null;
 
     const injectRecursively = async (dir: string) => {
         try {
@@ -1502,28 +1501,16 @@ class PreviewManager {
             for (const entry of entries) {
                 const fullPath = path.join(dir, entry.name);
                 if (entry.isDirectory()) {
-                    if (['node_modules', '.git', '.next', 'venv', '__pycache__', '.claudable', '.claude', 'backups'].includes(entry.name)) continue;
+                    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'venv' || entry.name === '__pycache__') continue;
                     await injectRecursively(fullPath);
                 } else if (entry.isFile() && entry.name.endsWith('.html')) {
                     const relPath = path.relative(projectPath, fullPath).replace(/\\/g, '/');
-                    
-                    let localScriptTag: string;
-                    if (relPath === normalizedMasterPath) {
-                        // Master layout gets the full script
-                        localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
+                    const localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
 <script>
 window.__AI_SMART_EDIT_FILE__ = "${relPath}";
 ${scriptContent}
 </script>
 <!-- AI SMART EDIT INJECTION END -->`;
-                    } else {
-                        // Child pages/templates get ONLY the file path override
-                        // This prevents duplicating the main script and ensures the correct file is targeted
-                        localScriptTag = `<!-- AI SMART EDIT INJECTION START -->
-<script>window.__AI_SMART_EDIT_FILE__ = "${relPath}";</script>
-<!-- AI SMART EDIT INJECTION END -->`;
-                    }
-
                     await this.injectIntoHtmlFile(fullPath, relPath, localScriptTag, log);
                 }
             }
@@ -1549,7 +1536,7 @@ ${scriptContent}
 
   public async injectRoute(projectId: string, route: string): Promise<{ injected: boolean; detectedRoute: string }> {
     try {
-      await this.injectAllHtmlFiles(projectId);
+      await this.injectAllHtmlFiles(projectId, undefined);
       return { injected: true, detectedRoute: route };
     } catch (e) {
       console.warn(`[PreviewManager] Failed to inject route ${route}:`, e);
@@ -1593,14 +1580,14 @@ ${scriptContent}
 
     const candidates = [
         path.join(projectPath, 'app', 'templates', 'base.html'),
-        path.join(projectPath, 'app', 'templates', 'layouts', 'main.html'),
-        path.join(projectPath, 'templates', 'base.html'),
-        path.join(projectPath, 'templates', 'layouts', 'main.html'),
-        path.join(projectPath, 'templates', 'index.html'),
+        // path.join(projectPath, 'app', 'templates', 'layouts', 'main.html'),
+        // path.join(projectPath, 'templates', 'base.html'),
+        // path.join(projectPath, 'templates', 'layouts', 'main.html'),
+        // path.join(projectPath, 'templates', 'index.html'),
         path.join(projectPath, 'index.html'),
-        path.join(projectPath, 'app', 'layout.tsx'),
-        path.join(projectPath, 'app', 'layout.js'),
-        path.join(projectPath, 'pages', '_app.tsx'),
+        // path.join(projectPath, 'app', 'layout.tsx'),
+        // path.join(projectPath, 'app', 'layout.js'),
+        // path.join(projectPath, 'pages', '_app.tsx'),
         path.join(projectPath, 'pages', '_app.js')
     ];
 
@@ -1799,28 +1786,13 @@ ${scriptContent}
       // Tag all elements with source IDs for granular editing
       content = tagContentWithSourceIds(content, relPath);
       
-      // Check if it's a template child (extends another layout)
-      const isTemplateChild = content.includes('{% extends') || content.includes('{% block');
-
       // Check if already injected
       if (content.includes('AI SMART EDIT INJECTION START')) {
          // Replace existing injection to ensure latest version
          content = content.replace(/<!-- AI SMART EDIT INJECTION START -->[\s\S]*?<!-- AI SMART EDIT INJECTION END -->/, injection);
          log(`Updated AI Smart Edit script in ${path.basename(filePath)}`);
-      } else if (isTemplateChild) {
-        // For child templates, we MUST inject inside a block that's actually rendered by the layout.
-        // We'll try to find the start of the first block content and prepend the script there.
-        const blockMatch = content.match(/{%\s*block\s+[a-zA-Z0-9_-]+\s*%}/);
-        if (blockMatch) {
-          const index = blockMatch.index! + blockMatch[0].length;
-          content = content.slice(0, index) + `\n${injection}\n` + content.slice(index);
-          log(`Injected AI Smart Edit script into block of template child ${path.basename(filePath)}`);
-        } else {
-          content += `\n${injection}\n`;
-          log(`Appended AI Smart Edit script to template child ${path.basename(filePath)} (no block found)`);
-        }
       } else {
-        // Standard HTML injection (before </body>)
+        // Inject before </body>
         if (content.includes('</body>')) {
           content = content.replace('</body>', `\n${injection}\n</body>`);
           log(`Injected AI Smart Edit script into ${path.basename(filePath)}`);
@@ -1836,6 +1808,7 @@ ${scriptContent}
       log(`Failed to update ${path.basename(filePath)}: ${e}`);
     }
   }
+
 
   private async createProjectBaselines(projectPath: string, log: (msg: string) => void): Promise<void> {
     const baselineDir = path.join(projectPath, '.claudable', 'baselines');

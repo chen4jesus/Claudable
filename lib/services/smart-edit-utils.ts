@@ -55,7 +55,11 @@ export function cleanupSmartEditContent(content: string): string {
     result = result.replace(importPattern, '');
   }
   
-  // 5. Remove Source-ID attributes
+  // 5. Remove the ai-smart-edit-styles block
+  const stylePattern = /<style id="ai-smart-edit-styles">[\s\S]*?<\/style>\s*\n?/g;
+  result = result.replace(stylePattern, '');
+  
+  // 6. Remove Source-ID attributes
   const srcIdPattern = /\s*data-ai-src-id=["'][^"']*["']/g;
   result = result.replace(srcIdPattern, '');
   
@@ -162,7 +166,7 @@ export function tagContentWithSourceIds(content: string, relPath: string): strin
     const lowerTagName = tagName.toLowerCase();
     // Skip if already has an ID or is a system tag we don't want to edit
     if (attrs.includes('data-ai-src-id') || 
-        ['script', 'style', 'link', 'meta', 'br', 'hr', 'base', 'noscript', 'template', 'title', 'head', 'html'].includes(lowerTagName)) {
+        ['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(lowerTagName)) {
       return match;
     }
     
