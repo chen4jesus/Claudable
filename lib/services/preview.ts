@@ -1312,7 +1312,7 @@ class PreviewManager {
         if (hasPredev) {
           await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
         }
-         spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
+        spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
     }
 
     // Inject Smart Edit Script is handled earlier in the start method via injectSmartEditScript
@@ -1322,10 +1322,13 @@ class PreviewManager {
     const useShell = true;
     
     // DEBUG: Log spawn details
-    console.error(`[PreviewManager DEBUG] Spawning: ${spawnCommand} ${spawnArgs.join(' ')}`);
-    console.error(`[PreviewManager DEBUG] CWD: ${projectPath}`);
-    console.error(`[PreviewManager DEBUG] PORT: ${env.PORT}`);
-    console.error(`[PreviewManager DEBUG] shell: ${useShell}`);
+    console.log(`[PreviewManager DEBUG] Spawning: ${spawnCommand} ${spawnArgs.join(' ')}`);
+    console.log(`[PreviewManager DEBUG] CWD: ${projectPath}`);
+    console.log(`[PreviewManager DEBUG] PORT: ${env.PORT}`);
+    console.log(`[PreviewManager DEBUG] shell: ${useShell}`);
+    console.log(`[PreviewManager DEBUG] spawnCommand: ${spawnCommand}`);
+    console.log(`[PreviewManager DEBUG] spawnArgs: ${spawnArgs}`);
+    console.log(`[PreviewManager DEBUG] env: ${JSON.stringify(env)}`);
     
     const child = spawn(
       spawnCommand,
@@ -1338,11 +1341,11 @@ class PreviewManager {
       }
     );
     
-    console.error(`[PreviewManager DEBUG] Spawned child PID: ${child.pid}`);
+    console.log(`[PreviewManager DEBUG] Spawned child PID: ${child.pid}`);
 
     child.stdout?.on('data', (chunk) => {
       const msg = chunk.toString();
-      console.error(`[PreviewManager STDOUT] ${msg.trim()}`);
+      console.log(`[PreviewManager STDOUT] ${msg.trim()}`);
       log(chunk);
       if (previewProcess.status === 'starting') {
         previewProcess.status = 'running';
@@ -1351,12 +1354,12 @@ class PreviewManager {
 
     child.stderr?.on('data', (chunk) => {
       const msg = chunk.toString();
-      console.error(`[PreviewManager STDERR] ${msg.trim()}`);
+      console.log(`[PreviewManager STDERR] ${msg.trim()}`);
       log(chunk);
     });
 
     child.on('exit', (code, signal) => {
-      console.error(`[PreviewManager DEBUG] Process ${child.pid} exited with code ${code} and signal ${signal}`);
+      console.log(`[PreviewManager DEBUG] Process ${child.pid} exited with code ${code} and signal ${signal}`);
       previewProcess.status = code === 0 ? 'stopped' : 'error';
       this.processes.delete(projectId);
       updateProject(projectId, {
