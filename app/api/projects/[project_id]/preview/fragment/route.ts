@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { getSourceFragmentBySrcId } from '@/lib/services/smart-edit-utils';
+import { getProjectById } from '@/lib/services/project';
 
 export async function GET(
   req: NextRequest,
@@ -15,7 +16,16 @@ export async function GET(
       return NextResponse.json({ error: 'srcId is required' }, { status: 400 });
     }
 
-    const projectPath = path.join(process.cwd(), 'projects', projectId);
+    // Look up the project to get the correct path (may have a custom repoPath)
+    const project = await getProjectById(projectId);
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    const repoPath = project.repoPath || path.join('data', 'projects', project.id);
+    const projectPath = path.isAbsolute(repoPath)
+      ? repoPath
+      : path.resolve(process.cwd(), repoPath);
     const fragment = await getSourceFragmentBySrcId(projectPath, srcId);
 
     return NextResponse.json({ success: true, data: { fragment } });

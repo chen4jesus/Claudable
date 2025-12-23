@@ -1254,7 +1254,7 @@ class PreviewManager {
     
     // Filter out environment variables that could conflict with the child process.
     // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
-    if (isFlaskProject || effectiveType === 'static-html') {
+    if (isFlaskProject || isStaticHtmlProject) {
       delete env.DATABASE_URL;
       delete env.DATABASE_PRISMA_URL;
       delete env.DATABASE_URL_NON_POOLING;
@@ -1321,6 +1321,7 @@ class PreviewManager {
         if (hasPredev) {
           await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
         }
+        env.PORT = String(effectivePortFinal);
         spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
         spawnOptions = {
           cwd: projectPath,
@@ -1607,14 +1608,14 @@ ${scriptContent}
 
     const candidates = [
         path.join(projectPath, 'app', 'templates', 'base.html'),
-        // path.join(projectPath, 'app', 'templates', 'layouts', 'main.html'),
-        // path.join(projectPath, 'templates', 'base.html'),
-        // path.join(projectPath, 'templates', 'layouts', 'main.html'),
-        // path.join(projectPath, 'templates', 'index.html'),
+        path.join(projectPath, 'app', 'templates', 'layouts', 'main.html'),
+        path.join(projectPath, 'templates', 'base.html'),
+        path.join(projectPath, 'templates', 'layouts', 'main.html'),
+        path.join(projectPath, 'templates', 'index.html'),
         path.join(projectPath, 'index.html'),
-        // path.join(projectPath, 'app', 'layout.tsx'),
-        // path.join(projectPath, 'app', 'layout.js'),
-        // path.join(projectPath, 'pages', '_app.tsx'),
+        path.join(projectPath, 'app', 'layout.tsx'),
+        path.join(projectPath, 'app', 'layout.js'),
+        path.join(projectPath, 'pages', '_app.tsx'),
         path.join(projectPath, 'pages', '_app.js')
     ];
 

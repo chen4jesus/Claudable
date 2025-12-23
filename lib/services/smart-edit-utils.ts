@@ -186,12 +186,56 @@ export async function getSourceFragmentBySrcId(projectPath: string, srcId: strin
   const baselinePath = path.join(projectPath, '.claudable', 'baselines', relPath);
   
   let content: string;
+  let isBaseline = false;
   try {
     content = await fs.readFile(baselinePath, 'utf8');
+    isBaseline = true;
   } catch {
     content = await fs.readFile(filePath, 'utf8');
   }
   
+  // Strategy 1: If this is the injected file (not baseline), find by data-ai-src-id directly
+  if (!isBaseline) {
+    const escapedId = srcId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const directMatchRegex = new RegExp(`<([a-zA-Z0-9]+)([^>]*\\bdata-ai-src-id=["']${escapedId}["'][^>]*)>`, 'i');
+    const directMatch = content.match(directMatchRegex);
+    
+    if (directMatch) {
+      const tagName = directMatch[1];
+      const startIndex = directMatch.index!;
+      const openingTagFull = directMatch[0];
+      
+      // Check for self-closing tag
+      if (openingTagFull.endsWith('/>')) {
+        return openingTagFull;
+      }
+      
+      // Balance tags to find the end
+      let balance = 1;
+      const searchRegex = new RegExp(`(<${tagName}\\b[^>]*>)|(\\/>)|(</${tagName}>)`, 'gi');
+      searchRegex.lastIndex = startIndex + openingTagFull.length;
+      
+      let smatch;
+      while ((smatch = searchRegex.exec(content)) !== null) {
+        if (smatch[1]) {
+          // Opening tag - check if self-closing
+          if (!smatch[1].endsWith('/>')) balance++;
+        } else if (smatch[3]) {
+          // Closing tag
+          balance--;
+        }
+        // smatch[2] is /> which doesn't affect balance for non-opening contexts
+        
+        if (balance === 0) {
+          return content.substring(startIndex, smatch.index + smatch[0].length);
+        }
+      }
+      // Fallback: return just the tag
+      return openingTagFull;
+    }
+  }
+  
+  // Strategy 2: Counter-based matching (for baseline files without injected IDs)
   let counter = 0;
   
   // Mirror the tagRegex used in tagContentWithSourceIds
@@ -203,7 +247,13 @@ export async function getSourceFragmentBySrcId(projectPath: string, srcId: strin
     const attrs = match[2];
     
     // Skip system tags same as tagContentWithSourceIds
-    if (attrs.includes('data-ai-src-id') || ['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
+    // Note: Don't skip elements with data-ai-src-id here since we're in baseline mode
+    if (['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
+      continue;
+    }
+    
+    // Skip if already has srcId (shouldn't happen in baseline, but safety check)
+    if (attrs.includes('data-ai-src-id')) {
       continue;
     }
     
