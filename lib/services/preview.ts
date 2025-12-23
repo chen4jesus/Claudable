@@ -1250,7 +1250,8 @@ class PreviewManager {
       : project.templateType;
 
     const isFlaskProject = effectiveType === 'flask';
-
+    const isStaticHtmlProject = effectiveType === 'static-html';
+    
     // Filter out environment variables that could conflict with the child process.
     // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
     if (isFlaskProject || effectiveType === 'static-html') {
@@ -1286,7 +1287,12 @@ class PreviewManager {
     console.log('isFlaskProject???', isFlaskProject);
     console.log('effectiveType???', effectiveType);
     let spawnOptions = {};
-    if (isFlaskProject) {
+    
+    // Use shell:true for Flask projects on all platforms for consistent behavior, Flask needs shell for proper Python command resolution on Linux
+    // Use shell:true for static-html projects, to ensure proper command resolution
+    const useShell = true;
+    
+    if (isFlaskProject || isStaticHtmlProject) {
        // Enforce dynamic port in source
        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
        
@@ -1305,7 +1311,7 @@ class PreviewManager {
        spawnOptions = {
          cwd: projectPath,
          env,
-         shell: true,
+         shell: useShell,
          stdio: ['ignore', 'pipe', 'pipe'],
        };
        console.log('spawnCommand???', spawnCommand);
@@ -1332,10 +1338,6 @@ class PreviewManager {
 
     // Inject Smart Edit Script is handled earlier in the start method via injectSmartEditScript
 
-    // Use shell:true for Flask projects on all platforms for consistent behavior
-    // Flask needs shell for proper Python command resolution on Linux
-    const useShell = true;
-    
     // DEBUG: Log spawn details
     console.log(`[PreviewManager DEBUG] Spawning: ${spawnCommand} ${spawnArgs.join(' ')}`);
     console.log(`[PreviewManager DEBUG] CWD: ${projectPath}`);
