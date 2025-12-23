@@ -1285,6 +1285,7 @@ class PreviewManager {
     // isFlaskProject and effectiveType already determined above
     console.log('isFlaskProject???', isFlaskProject);
     console.log('effectiveType???', effectiveType);
+    let spawnOptions = {};
     if (isFlaskProject) {
        // Enforce dynamic port in source
        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
@@ -1301,6 +1302,12 @@ class PreviewManager {
        
        // Set FLASK_APP to entry point
        env.FLASK_APP = entryPoint;
+       spawnOptions = {
+         cwd: projectPath,
+         env,
+         shell: true,
+         stdio: ['ignore', 'pipe', 'pipe'],
+       };
        console.log('spawnCommand???', spawnCommand);
        console.log('spawnArgs???', spawnArgs);
        log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand} ${spawnArgs.join(' ')}`));
@@ -1313,6 +1320,14 @@ class PreviewManager {
           await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
         }
         spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
+        spawnOptions = {
+          cwd: projectPath,
+          env: {
+            ...process.env,
+            NODE_ENV: 'development',
+          },
+          stdio: 'inherit',
+        }
     }
 
     // Inject Smart Edit Script is handled earlier in the start method via injectSmartEditScript
@@ -1333,14 +1348,7 @@ class PreviewManager {
     const child = spawn(
       spawnCommand,
       spawnArgs,
-      {
-        cwd: projectPath,
-        env: {
-          ...process.env,
-          NODE_ENV: 'development',
-        },
-        stdio: 'inherit',
-      }
+      spawnOptions
     );
     
     console.log(`[PreviewManager DEBUG] Spawned child PID: ${child.pid}`);
