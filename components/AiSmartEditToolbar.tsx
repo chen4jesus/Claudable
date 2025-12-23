@@ -18,6 +18,8 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
   const [isUploading, setIsUploading] = useState(false);
   const [sourceBaselines, setSourceBaselines] = useState<Record<string, string>>({});
   
+  const [isReady, setIsReady] = useState(false);
+  
   // Modal states
   const [imageModal, setImageModal] = useState<ImageClickContext | null>(null);
   const [linkModal, setLinkModal] = useState<LinkClickContext | null>(null);
@@ -36,6 +38,26 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
     if (targetIframeRef.current && targetIframeRef.current.contentWindow) {
       targetIframeRef.current.contentWindow.postMessage({ type, payload }, '*');
     }
+  }, [targetIframeRef]);
+
+  // Handle iframe load to check readiness
+  useEffect(() => {
+    const iframe = targetIframeRef.current;
+    if (!iframe) return;
+
+    const handleLoad = () => {
+      // Reset ready state on navigation/reload and check if script is present
+      setIsReady(false);
+      // Ping the script in case it loaded before the load event
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'AI_SMART_EDIT:PING' }, '*');
+      }
+    };
+
+    iframe.addEventListener('load', handleLoad);
+    return () => {
+      iframe.removeEventListener('load', handleLoad);
+    };
   }, [targetIframeRef]);
 
   // Toggle selection mode
@@ -159,7 +181,23 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
       const data = event.data as AiSmartEditMessage;
       
       if (data && typeof data === 'object' && 'type' in data) {
-        if (data.type === 'AI_SMART_EDIT:SELECTED') {
+        if (data.type === 'AI_SMART_EDIT:READY' || data.type === 'AI_SMART_EDIT:PONG') {
+          setIsReady(true);
+          // If we receive READY during active state but isReady was false (e.g. reload), re-enable?
+          // The script state is fresh (isActive=false).
+          if (isActive) {
+             // We were active, but iframe reloaded. Validating state?
+             // Actually, if iframe reloaded, we are probably in a fresh state in the iframe.
+             // We should re-send enable if we want to persist active state,
+             // but maybe safer to reset our local state to match the iframe?
+             // Let's reset local state to match the fresh iframe.
+             if (data.type === 'AI_SMART_EDIT:READY') {
+               setIsActive(false);
+               setIsEditMode(false);
+             }
+             // PONG usually means it was already there.
+          }
+        } else if (data.type === 'AI_SMART_EDIT:SELECTED') {
           setLastSelected(data.payload);
           if (onElementSelected) {
             onElementSelected(data.payload);
@@ -285,6 +323,8 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
     };
   }, [onElementSelected, isActive, isEditMode, sendMessage, projectId, imageModal, linkModal, showNotification, sourceBaselines]);
 
+  if (!isReady) return null;
+
   return (
     <>
       <div className={`fixed right-4 z-50 flex gap-2 ${isAtBottom ? 'top-24 flex-col-reverse' : 'bottom-4 flex-col items-end'}`}>
@@ -369,8 +409,8 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
         </div>
       </div>
 
-      {/* Image Editor Modal */}
-      {imageModal && (
+      {/* Image Editor Modal - Only render if ready? Actually if modals are open we probably want them to stay if connection lost? No, if connection lost, we can't save. So hiding everything is safer. */ }
+      {isReady && imageModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -451,7 +491,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
       )}
 
       {/* Link Editor Modal */}
-      {linkModal && (
+      {isReady && linkModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">

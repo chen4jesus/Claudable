@@ -622,4 +622,5 @@
   });
 
   console.log('[AI Smart Edit] Target script loaded with edit mode support.');
+  window.parent.postMessage({ type: `${NAMESPACE}:READY` }, '*');
 })();
