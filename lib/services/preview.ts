@@ -1319,7 +1319,7 @@ class PreviewManager {
 
     // Use shell:true for Flask projects on all platforms for consistent behavior
     // Flask needs shell for proper Python command resolution on Linux
-    const useShell = isFlaskProject ? true : process.platform === 'win32';
+    const useShell = true;
     
     // DEBUG: Log spawn details
     console.error(`[PreviewManager DEBUG] Spawning: ${spawnCommand} ${spawnArgs.join(' ')}`);
