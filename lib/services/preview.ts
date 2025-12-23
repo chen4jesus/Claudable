@@ -1314,9 +1314,6 @@ class PreviewManager {
          shell: useShell,
          stdio: ['ignore', 'pipe', 'pipe'],
        };
-       console.log('spawnCommand???', spawnCommand);
-       console.log('spawnArgs???', spawnArgs);
-       log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand} ${spawnArgs.join(' ')}`));
     } else if (isStaticHtmlProject) {
         // Static HTML Project
         const packageJson = await readPackageJson(projectPath);
@@ -1358,9 +1355,9 @@ class PreviewManager {
     console.log(`[PreviewManager DEBUG] CWD: ${projectPath}`);
     console.log(`[PreviewManager DEBUG] PORT: ${env.PORT}`);
     console.log(`[PreviewManager DEBUG] shell: ${useShell}`);
-    console.log(`[PreviewManager DEBUG] spawnCommand: ${spawnCommand}`);
-    console.log(`[PreviewManager DEBUG] spawnArgs: ${spawnArgs}`);
-    console.log(`[PreviewManager DEBUG] env: ${JSON.stringify(env)}`);
+    // console.log(`[PreviewManager DEBUG] spawnCommand: ${spawnCommand}`);
+    // console.log(`[PreviewManager DEBUG] spawnArgs: ${spawnArgs}`);
+    // console.log(`[PreviewManager DEBUG] env: ${JSON.stringify(env)}`);
     
     const child = spawn(
       spawnCommand,
