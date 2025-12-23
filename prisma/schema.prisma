@@ -279,3 +279,17 @@ model ServiceToken {
   @@index([provider])
   @@map("service_tokens")
 }
+// ============================================================
+// Auth Models
+// ============================================================
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String   // Hashed password
+  role      String   @default("user") // admin, user
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}

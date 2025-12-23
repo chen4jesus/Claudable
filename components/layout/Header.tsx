@@ -1,12 +1,20 @@
 "use client";
 import { useState } from 'react';
 import ProjectSettings from '@/components/settings/ProjectSettings';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 import Image from 'next/image';
 
 export default function Header() {
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   const pathname = usePathname() ?? '';
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  };
 
   // Extract project ID from pathname if we're in a project page
   const projectId = pathname.match(/^\/([^\/]+)\/(chat|page)?$/)?.[1];
@@ -38,13 +46,13 @@ export default function Header() {
                 </svg>
               </button>
             )}
-            <div className="h-8">
+            <div className="h-16">
               <Image
-                src="/Claudable_logo.svg"
-                alt="Claudable"
-                width={120}
-                height={32}
-                className="h-8 w-auto"
+                src="/faithconnect_blue.png"
+                alt="FaithConnect"
+                width={256}
+                height={64}
+                className="h-16 w-auto"
                 priority
               />
             </div>
@@ -67,6 +75,15 @@ export default function Header() {
                 />
                 <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
+            </button>
+
+            {/* Logout button */}
+            <button
+              className="flex items-center justify-center w-10 h-10 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+              onClick={handleLogout}
+              title="Logout"
+            >
+              <LogOut size={20} />
             </button>
           </div>
         </div>

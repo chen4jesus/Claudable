@@ -1,0 +1,70 @@
+import crypto from 'crypto';
+import { SignJWT, jwtVerify } from 'jose';
+import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'claudable-secret-key-change-me-in-prod';
+const key = new TextEncoder().encode(JWT_SECRET);
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  const [salt, hash] = storedHash.split(':');
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return hash === verifyHash;
+}
+
+export async function encrypt(payload: any) {
+  return await new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('24h')
+    .sign(key);
+}
+
+export async function decrypt(input: string): Promise<any> {
+  const { payload } = await jwtVerify(input, key, {
+    algorithms: ['HS256'],
+  });
+  return payload;
+}
+
+export async function login(user: { id: string; username: string; role: string }) {
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const session = await encrypt({ user, expires });
+
+  const cookieStore = await cookies();
+  cookieStore.set('session', session, { expires, httpOnly: true, path: '/' });
+}
+
+export async function logout() {
+  const cookieStore = await cookies();
+  cookieStore.set('session', '', { expires: new Date(0), path: '/' });
+}
+
+export async function getSession() {
+  const cookieStore = await cookies();
+  const session = cookieStore.get('session')?.value;
+  if (!session) return null;
+  return await decrypt(session);
+}
+
+export async function updateSession(request: NextRequest) {
+  const session = request.cookies.get('session')?.value;
+  if (!session) return;
+
+  const parsed = await decrypt(session);
+  parsed.expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const res = NextResponse.next();
+  res.cookies.set({
+    name: 'session',
+    value: await encrypt(parsed),
+    httpOnly: true,
+    expires: parsed.expires,
+  });
+  return res;
+}

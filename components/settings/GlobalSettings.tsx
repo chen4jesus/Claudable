@@ -4,6 +4,8 @@ import Image from 'next/image';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv } from '@/lib/motion';
 import ServiceConnectionModal from '@/components/modals/ServiceConnectionModal';
+import UserManagement from '@/components/settings/UserManagement';
+import AccountSettings from '@/components/settings/AccountSettings';
 import { FaCog } from 'react-icons/fa';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import { getModelDefinitionsForCli, normalizeModelId } from '@/lib/constants/cliModels';
@@ -118,7 +120,7 @@ interface ServiceToken {
 }
 
 export default function GlobalSettings({ isOpen, onClose, initialTab = 'general' }: GlobalSettingsProps) {
-  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'about'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'users' | 'account' | 'about'>(initialTab);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | null>(null);
   const [tokens, setTokens] = useState<{ [key: string]: ServiceToken | null }>({
@@ -134,6 +136,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [selectedCLI, setSelectedCLI] = useState<CLIOption | null>(null);
   const [apiKeyVisibility, setApiKeyVisibility] = useState<Record<string, boolean>>({});
+  const [currentUser, setCurrentUser] = useState<{ username: string; role: string } | null>(null);
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -207,12 +210,21 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     }
   }, []);
 
-  // Load all service tokens and CLI data
+  // Load all service tokens, CLI data, and current user
   useEffect(() => {
     if (isOpen) {
       loadAllTokens();
       loadGlobalSettings();
       checkCLIStatus();
+      
+      fetch(`${API_BASE}/api/auth/me`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.user) {
+            setCurrentUser(data.user);
+          }
+        })
+        .catch(err => console.error('Failed to fetch current user:', err));
     }
   }, [isOpen, loadAllTokens, loadGlobalSettings, checkCLIStatus]);
 
@@ -380,7 +392,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                 </span>
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 ">Global Settings</h2>
-                  <p className="text-sm text-gray-600 ">Configure your Claudable preferences</p>
+                  <p className="text-sm text-gray-600 ">Configure your preferences</p>
                 </div>
               </div>
               <button
@@ -399,8 +411,10 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
             <nav className="flex px-5">
               {[
                 { id: 'general' as const, label: 'General' },
+                { id: 'account' as const, label: 'Account' },
                 { id: 'ai-agents' as const, label: 'AI Agents' },
                 { id: 'services' as const, label: 'Services' },
+                ...(currentUser?.role === 'admin' ? [{ id: 'users' as const, label: 'Users' }] : []),
                 { id: 'about' as const, label: 'About' }
               ].map(tab => (
                 <button
@@ -765,28 +779,35 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
               </div>
             )}
 
+            {activeTab === 'account' && (
+              <AccountSettings />
+            )}
+
+            {activeTab === 'users' && currentUser?.role === 'admin' && (
+              <UserManagement />
+            )}
+
             {activeTab === 'about' && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-4 relative">
+                  <div className="w-24 h-24 mx-auto mb-4 relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#DE7356]/20 to-[#DE7356]/5 blur-xl rounded-2xl" />
                     <Image
-                      src="/Claudable_Icon.png"
-                      alt="Claudable Icon"
-                      width={80}
-                      height={80}
+                      src="/faithconnect_blue.png"
+                      alt="Faithconnect Icon"
+                      width={100}
+                      height={100}
                       className="relative z-10 w-full h-full object-contain rounded-2xl shadow-lg"
                     />
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 ">Claudable</h3>
+                  <h3 className="text-2xl font-bold text-gray-900 ">FaithConnect</h3>
                   <p className="text-gray-600 mt-2 font-medium">Version 1.0.0</p>
                 </div>
                 
                 <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 space-y-4">
                   <div className="text-center">
                     <p className="text-base text-gray-700 leading-relaxed max-w-2xl mx-auto">
-                      Claudable is an AI-powered development platform that integrates with GitHub, Supabase, and Vercel 
-                      to streamline your web development workflow.
+                      FaithConnect is an AI-powered development platform that integrates with technology, process and most importantly - people who love God and want to serve Him.
                     </p>
                   </div>
                   

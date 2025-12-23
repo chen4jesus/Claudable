@@ -5,7 +5,7 @@ import { MotionDiv, MotionH3, MotionP, MotionButton } from '@/lib/motion';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight, FaRedo } from 'react-icons/fa';
-import { ExternalLink, Trash2, Pencil } from 'lucide-react';
+import { ExternalLink, Trash2, Pencil, LogOut } from 'lucide-react';
 import { SiTypescript, SiGo, SiRuby, SiSvelte, SiJson, SiYaml, SiCplusplus } from 'react-icons/si';
 import { VscJson } from 'react-icons/vsc';
 import ChatLog from '@/components/chat/ChatLog';
@@ -271,6 +271,12 @@ export default function ChatPage() {
   const projectId = params?.project_id ?? '';
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  };
   
   // NEW: UserRequests state management
   const {
@@ -2675,6 +2681,15 @@ const persistProjectPreferences = useCallback(
                     title="Settings"
                   >
                     <FaCog size={16} />
+                  </button>
+
+                  {/* Logout Button */}
+                  <button 
+                    onClick={handleLogout}
+                    className="h-9 w-9 flex items-center justify-center bg-gray-100 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Logout"
+                  >
+                    <LogOut size={16} />
                   </button>
                   
                   {/* Stop Button */}

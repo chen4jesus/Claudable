@@ -7,9 +7,9 @@ import { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Build Faithfully',
-  description: 'Faithful Application',
+  description: 'Build Faithfully',
   icons: {
-    icon: '/Claudable_Icon.png',
+    icon: '/Faithfully_blue.png',
   },
 }
 
