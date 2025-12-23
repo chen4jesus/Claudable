@@ -194,8 +194,8 @@ export async function getSourceFragmentBySrcId(projectPath: string, srcId: strin
     content = await fs.readFile(filePath, 'utf8');
   }
   
-  // Strategy 1: If this is the injected file (not baseline), find by data-ai-src-id directly
-  if (!isBaseline) {
+  // Strategy 1: Try to find by data-ai-src-id directly (works when file has injected IDs)
+  {
     const escapedId = srcId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const directMatchRegex = new RegExp(`<([a-zA-Z0-9]+)([^>]*\\bdata-ai-src-id=["']${escapedId}["'][^>]*)>`, 'i');
     const directMatch = content.match(directMatchRegex);
@@ -235,6 +235,43 @@ export async function getSourceFragmentBySrcId(projectPath: string, srcId: strin
     }
   }
   
+  // Strategy 1b: Fuzzy match - if srcIds have different path prefixes, match by index suffix
+  const indexMatch = srcId.match(/::(\d+)$/);
+  if (indexMatch) {
+    const indexNum = indexMatch[1];
+    // Find any element with a srcId ending in the same ::N
+    const fuzzyMatchRegex = new RegExp(`<([a-zA-Z0-9]+)([^>]*\\bdata-ai-src-id=["'][^"']*::${indexNum}["'][^>]*)>`, 'i');
+    const fuzzyMatch = content.match(fuzzyMatchRegex);
+    
+    if (fuzzyMatch) {
+      const tagName = fuzzyMatch[1];
+      const startIndex = fuzzyMatch.index!;
+      const openingTagFull = fuzzyMatch[0];
+      
+      if (openingTagFull.endsWith('/>')) {
+        return openingTagFull;
+      }
+      
+      let balance = 1;
+      const searchRegex = new RegExp(`(<${tagName}\\b[^>]*>)|(/>)|(</${tagName}>)`, 'gi');
+      searchRegex.lastIndex = startIndex + openingTagFull.length;
+      
+      let smatch;
+      while ((smatch = searchRegex.exec(content)) !== null) {
+        if (smatch[1]) {
+          if (!smatch[1].endsWith('/>')) balance++;
+        } else if (smatch[3]) {
+          balance--;
+        }
+        
+        if (balance === 0) {
+          return content.substring(startIndex, smatch.index + smatch[0].length);
+        }
+      }
+      return openingTagFull;
+    }
+  }
+  
   // Strategy 2: Counter-based matching (for baseline files without injected IDs)
   let counter = 0;
   
@@ -248,9 +285,9 @@ export async function getSourceFragmentBySrcId(projectPath: string, srcId: strin
     
     // Skip system tags same as tagContentWithSourceIds
     // Note: Don't skip elements with data-ai-src-id here since we're in baseline mode
-    if (['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
-      continue;
-    }
+    // if (['script', 'style', 'link', 'meta', 'br', 'hr', 'base'].includes(tagName.toLowerCase())) {
+    //   continue;
+    // }
     
     // Skip if already has srcId (shouldn't happen in baseline, but safety check)
     if (attrs.includes('data-ai-src-id')) {
