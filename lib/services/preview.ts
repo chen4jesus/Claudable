@@ -1335,9 +1335,11 @@ class PreviewManager {
       spawnArgs,
       {
         cwd: projectPath,
-        env,
-        shell: useShell,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          NODE_ENV: 'development',
+        },
+        stdio: 'inherit',
       }
     );
     
