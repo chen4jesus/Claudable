@@ -283,7 +283,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
-  }, [onElementSelected, isActive, isEditMode, sendMessage, projectId, imageModal, linkModal]);
+  }, [onElementSelected, isActive, isEditMode, sendMessage, projectId, imageModal, linkModal, showNotification, sourceBaselines]);
 
   return (
     <>
@@ -420,6 +420,7 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
             {imageUrl && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Preview</label>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
                   src={imageUrl.startsWith('/') && previewUrl ? `${previewUrl.replace(/\/$/, '')}${imageUrl}` : imageUrl} 
                   alt="Preview" 

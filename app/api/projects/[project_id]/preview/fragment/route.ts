@@ -4,10 +4,10 @@ import { getSourceFragmentBySrcId } from '@/lib/services/smart-edit-utils';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { project_id: string } }
+  { params }: { params: Promise<{ project_id: string }> }
 ) {
   try {
-    const projectId = params.project_id;
+    const { project_id: projectId } = await params;
     const { searchParams } = new URL(req.url);
     const srcId = searchParams.get('srcId');
 
