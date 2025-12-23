@@ -45,6 +45,10 @@ COPY . .
 # 9. npm run build
 RUN npm run build
 
+# Add default root user during build (using image's local data directory)
+RUN DATABASE_URL="file:/var/local/Claudable/data/cc.db" npx prisma db push && \
+    DATABASE_URL="file:/var/local/Claudable/data/cc.db" node scripts/seed-admin.js
+
 # 10. npm install -g @anthropic-ai/claude-code
 RUN npm install -g @anthropic-ai/claude-code
 
