@@ -1289,8 +1289,8 @@ class PreviewManager {
     let spawnOptions = {};
     
     // Use shell:true for Flask projects on all platforms for consistent behavior, Flask needs shell for proper Python command resolution on Linux
-    // Use shell:true for static-html projects, to ensure proper command resolution
-    const useShell = true;
+    // Use shell:true for static-html projects on Windows, false on other platforms, to ensure proper command resolution
+    const useShell = isFlaskProject ? true : process.platform === 'win32';
     
     if (isFlaskProject) {
        // Enforce dynamic port in source
@@ -1343,8 +1343,8 @@ class PreviewManager {
             ...process.env,
             NODE_ENV: 'development',
           },
-          shell: process.platform === 'win32', // Required on Windows to avoid EINVAL
-          stdio: process.platform === 'win32' ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+          shell: useShell, // Required on Windows to avoid EINVAL
+          stdio: useShell ? ['ignore', 'pipe', 'pipe'] : 'inherit',
         };
     }
 
