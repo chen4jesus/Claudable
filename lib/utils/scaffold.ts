@@ -1542,6 +1542,7 @@ instance/
 .vscode/
 *.swp
 *.swo
+.claudable/
 
 # OS
 .DS_Store
