@@ -35,6 +35,9 @@ const DEFAULT_GITIGNORE_ENTRIES = [
   'yarn-debug.log*',
   'yarn-error.log*',
   'pnpm-debug.log*',
+  '# IDE',
+  '.idea/',
+  '.vscode/',
 ];
 
 function ensureGitignore(repoPath: string) {
