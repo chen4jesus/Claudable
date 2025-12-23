@@ -1,5 +1,6 @@
 import { prisma as db } from '@/lib/db/client';
-import { getSession, hashPassword, verifyPassword } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
+import { hashPassword, verifyPassword } from '@/lib/password';
 import { NextResponse } from 'next/server';
 
 export async function PATCH(request: Request) {

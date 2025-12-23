@@ -1,10 +1,11 @@
 import { prisma as db } from '@/lib/db/client';
-import { getSession, hashPassword } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
+import { hashPassword } from '@/lib/password';
 import { NextResponse } from 'next/server';
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session || session.user.role !== 'admin') {
@@ -13,7 +14,7 @@ export async function PATCH(
 
   try {
     const { password, role } = await request.json();
-    const userId = params.id;
+    const { id: userId } = await params;
 
     const data: any = {};
     if (password) {
@@ -42,7 +43,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session || session.user.role !== 'admin') {
@@ -50,7 +51,7 @@ export async function DELETE(
   }
 
   try {
-    const userId = params.id;
+    const { id: userId } = await params;
 
     // Prevent deleting your own account (or the root user if preferred)
     if (userId === session.user.id) {
