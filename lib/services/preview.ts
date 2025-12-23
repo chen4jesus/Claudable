@@ -170,6 +170,14 @@ async function detectProjectType(projectPath: string): Promise<DetectedProjectTy
   const requirementsTxtPath = path.join(projectPath, 'requirements.txt');
   
   try {
+    const htmlPath = path.join(projectPath, 'index.html');
+    await fs.access(htmlPath);
+    return 'static-html';
+  } catch {
+    // No index.html
+  }
+
+  try {
     // Check for wsgi.py
     if (await fileExists(wsgiPath)) {
         return 'flask';
@@ -1250,8 +1258,8 @@ class PreviewManager {
       : project.templateType;
 
     const isFlaskProject = effectiveType === 'flask';
-    const isStaticHtmlProject = effectiveType === 'static-html';
-    
+    const isStaticHtmlProject = effectiveType === 'static-html' ? true : await detectProjectType(projectPath) === 'static-html';
+    // console.debug("++++++++++++++++++++++++++++++++++", await detectProjectType(projectPath));
     // Filter out environment variables that could conflict with the child process.
     // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
     if (isFlaskProject || isStaticHtmlProject) {
