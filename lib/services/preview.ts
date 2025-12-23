@@ -1292,7 +1292,7 @@ class PreviewManager {
     // Use shell:true for static-html projects, to ensure proper command resolution
     const useShell = true;
     
-    if (isFlaskProject || isStaticHtmlProject) {
+    if (isFlaskProject) {
        // Enforce dynamic port in source
        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
        
@@ -1317,6 +1317,20 @@ class PreviewManager {
        console.log('spawnCommand???', spawnCommand);
        console.log('spawnArgs???', spawnArgs);
        log(Buffer.from(`[PreviewManager] Using Python command: ${spawnCommand} ${spawnArgs.join(' ')}`));
+    } else if (isStaticHtmlProject) {
+        // Static HTML Project
+        const packageJson = await readPackageJson(projectPath);
+        const hasPredev = Boolean(packageJson?.scripts?.predev);
+        if (hasPredev) {
+          await appendCommandLogs(npmCommand, ['run', 'predev'], projectPath, env, log);
+        }
+        spawnArgs = ['run', 'dev', '--', '--port', String(effectivePortFinal), '-H', '0.0.0.0'];
+        spawnOptions = {
+          cwd: projectPath,
+          env,
+          shell: useShell,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        };
     } else {
         // Node/Next logic
         const packageJson = await readPackageJson(projectPath);
@@ -1332,8 +1346,9 @@ class PreviewManager {
             ...process.env,
             NODE_ENV: 'development',
           },
-          stdio: 'inherit',
-        }
+          shell: process.platform === 'win32', // Required on Windows to avoid EINVAL
+          stdio: process.platform === 'win32' ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+        };
     }
 
     // Inject Smart Edit Script is handled earlier in the start method via injectSmartEditScript
