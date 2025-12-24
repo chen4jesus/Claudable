@@ -1,19 +1,33 @@
 #!/bin/bash
 # Cleanup stale processes for the claude user
 # Kills processes running > 30 mins (1800s) with < 10s CPU time (zombies/stale)
-# Excludes PIDs listed in /tmp/protected_pids (set by docker-entrypoint.sh)
+# Excludes PIDs listed in /tmp/protected_pids AND all their descendants
 
 PROTECTED_PIDS_FILE="/tmp/protected_pids"
 
-# Build exclusion pattern from protected PIDs file
-EXCLUDE_PIDS=""
-if [ -f "$PROTECTED_PIDS_FILE" ]; then
-    EXCLUDE_PIDS=$(cat "$PROTECTED_PIDS_FILE" | tr '\n' '|' | sed 's/|$//')
-fi
+# Function to get all descendant PIDs of a given PID
+get_descendants() {
+    local parent=$1
+    local children=$(ps -o pid --ppid "$parent" --no-headers 2>/dev/null | tr -d ' ')
+    echo "$parent"
+    for child in $children; do
+        get_descendants "$child"
+    done
+}
 
-# Get stale processes and filter out protected PIDs
+# Build list of all protected PIDs (including descendants)
+ALL_PROTECTED=""
+if [ -f "$PROTECTED_PIDS_FILE" ]; then
+    for pid in $(cat "$PROTECTED_PIDS_FILE"); do
+        ALL_PROTECTED="$ALL_PROTECTED $(get_descendants $pid)"
+    done
+fi
+# Convert to pipe-separated for awk
+EXCLUDE_PATTERN=$(echo $ALL_PROTECTED | tr ' ' '|' | sed 's/^|//;s/|$//')
+
+# Get stale processes and filter out protected PIDs and their descendants
 ps -u claude -o pid,etimes,cputime --no-headers 2>/dev/null | \
-    awk -v exclude="$EXCLUDE_PIDS" '
+    awk -v exclude="$EXCLUDE_PATTERN" '
         BEGIN { split(exclude, pids, "|") }
         $2 > 1800 && $3 ~ /^00:00:0[0-9]$/ {
             protected = 0
