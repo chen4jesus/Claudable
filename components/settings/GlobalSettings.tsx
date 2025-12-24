@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { MotionDiv } from '@/lib/motion';
 import ServiceConnectionModal from '@/components/modals/ServiceConnectionModal';
 import UserManagement from '@/components/settings/UserManagement';
+import GroupManagement from '@/components/settings/GroupManagement';
 import AccountSettings from '@/components/settings/AccountSettings';
 import { FaCog } from 'react-icons/fa';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
@@ -17,7 +18,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 interface GlobalSettingsProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'general' | 'ai-agents' | 'services' | 'about';
+  initialTab?: 'general' | 'ai-agents' | 'services' | 'groups' | 'about';
 }
 
 interface CLIOption {
@@ -120,7 +121,7 @@ interface ServiceToken {
 }
 
 export default function GlobalSettings({ isOpen, onClose, initialTab = 'general' }: GlobalSettingsProps) {
-  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'users' | 'account' | 'about'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'users' | 'groups' | 'account' | 'about'>(initialTab);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | null>(null);
   const [tokens, setTokens] = useState<{ [key: string]: ServiceToken | null }>({
@@ -415,6 +416,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                 { id: 'ai-agents' as const, label: 'AI Agents' },
                 { id: 'services' as const, label: 'Services' },
                 ...(currentUser?.role === 'admin' ? [{ id: 'users' as const, label: 'Users' }] : []),
+                ...(currentUser?.role === 'admin' ? [{ id: 'groups' as const, label: 'Groups' }] : []),
                 { id: 'about' as const, label: 'About' }
               ].map(tab => (
                 <button
@@ -785,6 +787,10 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
 
             {activeTab === 'users' && currentUser?.role === 'admin' && (
               <UserManagement />
+            )}
+
+            {activeTab === 'groups' && currentUser?.role === 'admin' && (
+              <GroupManagement />
             )}
 
             {activeTab === 'about' && (

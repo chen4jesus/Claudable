@@ -4,11 +4,12 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import CreateProjectModal from '@/components/modals/CreateProjectModal';
 import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
+import ResourceManagementModal from '@/components/modals/ResourceManagementModal';
 import GlobalSettings from '@/components/settings/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import Image from 'next/image';
-import { Image as ImageIcon, LogOut, User as UserIcon, Shield } from 'lucide-react';
+import { Image as ImageIcon, LogOut, User as UserIcon, Shield, Server } from 'lucide-react';
 import type { Project as ProjectSummary } from '@/types/project';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
@@ -50,6 +51,7 @@ export default function HomePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+  const [showResourceManagement, setShowResourceManagement] = useState(false);
   const [globalSettingsTab, setGlobalSettingsTab] = useState<'general' | 'ai-assistant'>('ai-assistant');
   const [editingProject, setEditingProject] = useState<ProjectSummary | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; project: ProjectSummary | null }>({ isOpen: false, project: null });
@@ -744,7 +746,7 @@ export default function HomePage() {
             </svg>
           </button>
           
-          {/* Settings and Logout buttons when sidebar is closed */}
+          {/* Settings, Resources, and Logout buttons when sidebar is closed */}
           <div className="mt-auto mb-2 flex flex-col gap-1">
             <button
               onClick={() => setShowGlobalSettings(true)}
@@ -756,6 +758,15 @@ export default function HomePage() {
                 <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowResourceManagement(true)}
+                className="w-full h-10 flex items-center justify-center text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                title="Resources"
+              >
+                <Server size={20} />
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="w-full h-10 flex items-center justify-center text-gray-600 hover:text-red-600 hover:bg-red-50 transition-colors"
@@ -970,11 +981,11 @@ export default function HomePage() {
             </button>
             {isAdmin && (
               <button 
-                onClick={() => router.push('/admin/groups')}
+                onClick={() => setShowResourceManagement(true)}
                 className="w-full flex items-center gap-2 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all text-sm"
               >
-                <Shield size={18} />
-                User Groups
+                <Server size={18} />
+                Resources
               </button>
             )}
             <button 
@@ -1267,6 +1278,12 @@ export default function HomePage() {
       <GlobalSettings
         isOpen={showGlobalSettings}
         onClose={() => setShowGlobalSettings(false)}
+      />
+
+      {/* Resource Management Modal */}
+      <ResourceManagementModal
+        isOpen={showResourceManagement}
+        onClose={() => setShowResourceManagement(false)}
       />
 
       {/* Delete Project Modal */}
