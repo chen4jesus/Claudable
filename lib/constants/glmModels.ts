@@ -1,4 +1,4 @@
-export type GLMModelId = 'glm-4.6';
+export type GLMModelId = 'glm-4.7';
 
 export interface GLMModelDefinition {
   id: GLMModelId;
@@ -10,17 +10,17 @@ export interface GLMModelDefinition {
 
 export const GLM_MODEL_DEFINITIONS: GLMModelDefinition[] = [
   {
-    id: 'glm-4.6',
-    name: 'GLM 4.6',
-    description: 'Zhipu GLM 4.6 with Claude Code compatible agent runtime',
+    id: 'glm-4.7',
+    name: 'GLM 4.7',
+    description: 'Zhipu GLM 4.7 with Claude Code compatible agent runtime',
     supportsImages: false,
     aliases: [
-      'glm46',
-      'glm-46',
-      'glm_46',
-      'glm 4.6',
-      'glm-4_6',
-      'glm4.6',
+      'glm47',
+      'glm-47',
+      'glm_47',
+      'glm 4.7',
+      'glm-4_7',
+      'glm4.7',
       'glm4',
       'glm',
       'glm-latest',
@@ -28,7 +28,7 @@ export const GLM_MODEL_DEFINITIONS: GLMModelDefinition[] = [
   },
 ];
 
-export const GLM_DEFAULT_MODEL: GLMModelId = 'glm-4.6';
+export const GLM_DEFAULT_MODEL: GLMModelId = 'glm-4.7';
 
 const GLM_MODEL_ALIAS_MAP: Record<string, GLMModelId> = GLM_MODEL_DEFINITIONS.reduce(
   (acc, definition) => {
