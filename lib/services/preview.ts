@@ -1293,6 +1293,7 @@ class PreviewManager {
 
     // isFlaskProject and effectiveType already determined above
     console.log('isFlaskProject???', isFlaskProject);
+    console.log('isStaticHtmlProject???', isStaticHtmlProject);
     console.log('effectiveType???', effectiveType);
     let spawnOptions = {};
     
@@ -1373,6 +1374,9 @@ class PreviewManager {
       spawnArgs,
       spawnOptions
     );
+    
+    // Store child process reference so stop() can kill it
+    previewProcess.process = child;
     
     console.log(`[PreviewManager DEBUG] Spawned child PID: ${child.pid}`);
 
