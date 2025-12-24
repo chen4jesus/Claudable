@@ -2,14 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Folder, RefreshCw, Trash2, Loader2, X, AlertCircle } from 'lucide-react';
+import { Server, Folder, RefreshCw, Trash2, Loader2, X, AlertCircle, ExternalLink, ChevronDown, ChevronUp, Shield, Globe } from 'lucide-react';
 
 interface Project {
   id: string;
   name: string;
+  description?: string | null;
   status: string;
   createdAt: string;
   previewUrl?: string | null;
+  templateType?: string | null;
+  groupId?: string | null;
+  groupName?: string | null;
 }
 
 interface ResourceManagementModalProps {
@@ -23,6 +27,7 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
   const [loading, setLoading] = useState(true);
   const [recycling, setRecycling] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -48,6 +53,7 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
   useEffect(() => {
     if (isOpen) {
       fetchProjects();
+      setExpandedId(null);
     }
   }, [isOpen, fetchProjects]);
 
@@ -81,7 +87,7 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
       
       if (data.success) {
         showToast('All preview processes have been stopped successfully', 'success');
-        fetchProjects(); // Refresh project statuses
+        fetchProjects();
       } else {
         showToast(`Failed to recycle: ${data.error}`, 'error');
       }
@@ -100,6 +106,27 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
     });
   };
 
+  const openPreview = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
+  const getTemplateLabel = (type?: string | null) => {
+    const templates: Record<string, string> = {
+      'nextjs': 'Next.js',
+      'react': 'React',
+      'vue': 'Vue',
+      'flask': 'Flask',
+      'static-html': 'Static HTML',
+      'git-import': 'Git Import',
+      'custom': 'Custom'
+    };
+    return type ? templates[type] || type : 'Unknown';
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -111,7 +138,7 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
         />
         
         <motion.div 
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[600px] border border-gray-200 flex flex-col"
+          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[650px] border border-gray-200 flex flex-col"
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -168,7 +195,7 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900">All Projects</h3>
-                    <p className="text-sm text-gray-600">Manage project resources</p>
+                    <p className="text-sm text-gray-600">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
                   </div>
                   <button
                     onClick={fetchProjects}
@@ -189,59 +216,126 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
                     <p>No projects found</p>
                   </div>
                 ) : (
-                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-gray-50 text-gray-600 font-medium">
-                        <tr>
-                          <th className="px-4 py-3">Project</th>
-                          <th className="px-4 py-3">Status</th>
-                          <th className="px-4 py-3">Created</th>
-                          <th className="px-4 py-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {projects.map((project) => (
-                          <tr key={project.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                                  <Folder size={16} />
-                                </div>
-                                <span className="font-medium text-gray-900 truncate max-w-[200px]">{project.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                project.status === 'running' 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : project.status === 'error'
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-gray-100 text-gray-700'
-                              }`}>
-                                {project.status || 'idle'}
+                  <div className="space-y-2">
+                    {projects.map((project) => (
+                      <div 
+                        key={project.id}
+                        className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
+                      >
+                        {/* Main Row */}
+                        <div className="flex items-center gap-4 p-4">
+                          {/* Project Icon & Name */}
+                          <div className="flex items-center gap-3 min-w-[200px] flex-1">
+                            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 flex-shrink-0">
+                              <Folder size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-medium text-gray-900 block truncate">{project.name}</span>
+                              {project.description && (
+                                <button
+                                  onClick={() => toggleExpand(project.id)}
+                                  className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1 mt-0.5"
+                                >
+                                  {expandedId === project.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                  {expandedId === project.id ? 'Hide description' : 'Show description'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Template Type */}
+                          <div className="w-24 flex-shrink-0">
+                            <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Template</span>
+                            <span className="text-xs text-gray-700">{getTemplateLabel(project.templateType)}</span>
+                          </div>
+
+                          {/* Status */}
+                          <div className="w-20 flex-shrink-0">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              project.status === 'running' 
+                                ? 'bg-green-100 text-green-700' 
+                                : project.status === 'error'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {project.status || 'idle'}
+                            </span>
+                          </div>
+
+                          {/* Group */}
+                          <div className="w-28 flex-shrink-0">
+                            {project.groupId ? (
+                              <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200">
+                                <Shield size={10} />
+                                {project.groupName || 'Private'}
                               </span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-600">
-                              {formatDate(project.createdAt)}
-                            </td>
-                            <td className="px-4 py-3 text-right">
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-2 py-1 rounded border border-green-100">
+                                <Globe size={10} />
+                                Public
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Preview URL */}
+                          <div className="w-24 flex-shrink-0">
+                            {project.previewUrl ? (
                               <button
-                                onClick={() => handleDeleteProject(project.id, project.name)}
-                                disabled={deletingId === project.id}
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
-                                title="Delete project"
+                                onClick={() => openPreview(project.previewUrl!)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                title={project.previewUrl}
                               >
-                                {deletingId === project.id ? (
-                                  <Loader2 size={16} className="animate-spin" />
-                                ) : (
-                                  <Trash2 size={16} />
-                                )}
+                                <ExternalLink size={12} />
+                                Preview
                               </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            ) : (
+                              <span className="text-xs text-gray-400">No preview</span>
+                            )}
+                          </div>
+
+                          {/* Created Date */}
+                          <div className="w-24 text-xs text-gray-600 flex-shrink-0">
+                            {formatDate(project.createdAt)}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex-shrink-0">
+                            <button
+                              onClick={() => handleDeleteProject(project.id, project.name)}
+                              disabled={deletingId === project.id}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
+                              title="Delete project"
+                            >
+                              {deletingId === project.id ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={16} />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expanded Description */}
+                        <AnimatePresence>
+                          {expandedId === project.id && project.description && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-4 pb-4 pt-0">
+                                <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-100">
+                                  <span className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Description</span>
+                                  {project.description}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

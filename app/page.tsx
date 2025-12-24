@@ -100,14 +100,30 @@ export default function HomePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [username, setUsername] = useState('');
   
+  // Loading progress tracking
+  const [loadingStages, setLoadingStages] = useState({
+    auth: false,
+    cli: false,
+    projects: false
+  });
+  const isFullyLoaded = loadingStages.auth && loadingStages.cli && loadingStages.projects;
+  const loadingProgress = [loadingStages.auth, loadingStages.cli, loadingStages.projects].filter(Boolean).length;
+  const loadingMessage = !loadingStages.auth ? 'Checking authentication...' 
+    : !loadingStages.cli ? 'Loading AI assistants...'
+    : !loadingStages.projects ? 'Loading projects...'
+    : 'Ready!';
+  
   useEffect(() => {
     fetch('/api/auth/me')
       .then(res => res.json())
       .then(data => {
         setIsAdmin(data?.user?.role === 'admin');
         setUsername(data?.user?.username || '');
+        setLoadingStages(prev => ({ ...prev, auth: true }));
       })
-      .catch(() => {});
+      .catch(() => {
+        setLoadingStages(prev => ({ ...prev, auth: true }));
+      });
   }, []);
   
   // Get available models based on current assistant
@@ -200,10 +216,14 @@ export default function HomePage() {
     setCLIStatus(checkingStatus);
 
     fetchCliStatusSnapshot()
-      .then((status) => setCLIStatus(status))
+      .then((status) => {
+        setCLIStatus(status);
+        setLoadingStages(prev => ({ ...prev, cli: true }));
+      })
       .catch((error) => {
         console.error('Failed to check CLI status:', error);
         setCLIStatus(createCliStatusFallback());
+        setLoadingStages(prev => ({ ...prev, cli: true }));
       });
   }, []);
 
@@ -323,11 +343,18 @@ export default function HomePage() {
       });
 
       setProjects(sortedProjects);
+      setLoadingStages(prev => ({ ...prev, projects: true }));
     } catch (error) {
       console.warn('Failed to load projects:', error);
       setProjects([]);
+      setLoadingStages(prev => ({ ...prev, projects: true }));
     }
   }, [normalizeProjectPayload]);
+  
+  // Load projects on mount
+  useEffect(() => {
+    load();
+  }, [load]);
   
   async function onCreated() { await load(); }
   
@@ -707,6 +734,77 @@ export default function HomePage() {
 
   return (
     <div className="flex h-screen relative overflow-hidden bg-white ">
+      {/* Loading Overlay */}
+      {!isFullyLoaded && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-50">
+          <div className="w-80 flex flex-col items-center gap-8">
+            {/* Logo area */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative w-24 h-24">
+                {/* Logo image */}
+                <Image 
+                  src="/faithconnect_blue.png" 
+                  alt="FaithConnect" 
+                  width={96} 
+                  height={96}
+                  className="relative z-10 rounded-2xl"
+                  priority
+                />
+                {/* Shine effect overlay */}
+                <div 
+                  className="absolute inset-0 z-20 overflow-hidden rounded-2xl pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.6) 50%, transparent 70%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shine 2s ease-in-out infinite'
+                  }}
+                />
+                {/* Glow effect behind logo */}
+                <div className="absolute inset-0 -z-10 blur-xl opacity-40 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full scale-110" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900">Build Faithfully</h1>
+            </div>
+            
+            {/* Shine animation keyframes */}
+            <style jsx>{`
+              @keyframes shine {
+                0% { background-position: 200% 0; }
+                100% { background-position: -200% 0; }
+              }
+            `}</style>
+            
+            {/* Progress bar container */}
+            <div className="w-full space-y-3">
+              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-[#DE7356] to-[#c45f45] rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${(loadingProgress / 3) * 100}%` }}
+                />
+              </div>
+              
+              {/* Status message */}
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                <div className="w-4 h-4 border-2 border-[#DE7356] border-t-transparent rounded-full animate-spin" />
+                <span>{loadingMessage}</span>
+              </div>
+              
+              {/* Progress steps */}
+              <div className="flex justify-between text-xs text-gray-400 pt-2">
+                <span className={loadingStages.auth ? 'text-green-600' : ''}>
+                  {loadingStages.auth ? '✓' : '○'} Auth
+                </span>
+                <span className={loadingStages.cli ? 'text-green-600' : ''}>
+                  {loadingStages.cli ? '✓' : '○'} AI
+                </span>
+                <span className={loadingStages.projects ? 'text-green-600' : ''}>
+                  {loadingStages.projects ? '✓' : '○'} Projects
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Radial gradient background from bottom center */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-white " />

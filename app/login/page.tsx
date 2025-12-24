@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -59,10 +60,33 @@ export default function LoginPage() {
         className="w-full max-w-md p-8 bg-white/80 backdrop-blur-xl rounded-3xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] border border-white/50 relative z-10"
       >
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-[#D97757] to-[#8C4B35] rounded-2xl flex items-center justify-center shadow-lg mb-4">
-            <Lock className="text-white w-8 h-8" />
+          <div className="relative w-24 h-24 mb-2 group">
+            {/* Logo image */}
+            <Image 
+              src="/faithconnect_blue.png" 
+              alt="FaithConnect" 
+              width={96} 
+              height={96}
+              className="relative z-10 drop-shadow-md transition-transform duration-300 group-hover:scale-105 rounded-2xl"
+              priority
+            />
+            {/* Shine effect overlay - appears on hover */}
+            <div 
+              className="absolute inset-0 z-20 overflow-hidden rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+              style={{
+                background: 'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.8) 50%, transparent 70%)',
+                backgroundSize: '200% 100%',
+                animation: 'shine 1.5s ease-in-out infinite'
+              }}
+            />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">FaithConnect</h1>
+          <style jsx>{`
+            @keyframes shine {
+              0% { background-position: 200% 0; }
+              100% { background-position: -200% 0; }
+            }
+          `}</style>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Build Faithfully</h1>
           <p className="text-gray-500 mt-2">Sign in to your workspace</p>
         </div>
 

@@ -31,11 +31,12 @@ export default function Header() {
       .catch(() => {});
   }, []);
 
-  // Hide header on chat pages and main page (main page has its own header)
+  // Hide header on chat pages, main page, and login page
   const isChatPage = pathname.includes('/chat');
   const isMainPage = pathname === '/';
+  const isLoginPage = pathname === '/login';
 
-  if (isChatPage || isMainPage) {
+  if (isChatPage || isMainPage || isLoginPage) {
     return null;
   }
 
