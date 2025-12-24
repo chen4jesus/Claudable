@@ -1,43 +1,28 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextRequest } from 'next/server';
 import { previewManager } from '@/lib/services/preview';
+import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/utils/api-response';
+import { getSession } from '@/lib/auth';
 
 /**
  * POST /api/admin/recycle
  * Stops all running preview processes (admin only)
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is admin
-    if (session.user.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden: Admin access required' },
-        { status: 403 }
-      );
+    const session = await getSession();
+    if (!session || session.user.role !== 'admin') {
+      return createErrorResponse('Unauthorized', undefined, 401);
     }
 
     // Stop all preview processes
     await previewManager.stopAll();
 
-    return NextResponse.json({
-      success: true,
+    return createSuccessResponse({
       message: 'All preview processes have been stopped',
     });
   } catch (error) {
-    console.error('[API] Error in recycle endpoint:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to recycle preview processes' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'API', 'Failed to recycle preview processes');
   }
 }
+
+export const dynamic = 'force-dynamic';
