@@ -25,7 +25,7 @@ const isWindows = process.platform === 'win32';
 /**
  * Kill an entire process tree (parent + all descendants)
  * On Windows: uses taskkill /T /F
- * On Unix: uses process groups with negative PID
+ * On Unix: uses ps -eo pid,ppid to find all descendants and kill them
  */
 function killProcessTree(pid: number): Promise<void> {
   return new Promise((resolve) => {
@@ -38,29 +38,85 @@ function killProcessTree(pid: number): Promise<void> {
         resolve();
       });
     } else {
-      // Unix: kill the process group using negative PID
-      // We use both group kill and specific PID kill to be thorough
-      try {
-        // The negative PID kills all processes in the process group
-        process.kill(-pid, 'SIGTERM');
-        process.kill(pid, 'SIGTERM');
-      } catch (error) {
-        // ESRCH means process/group doesn't exist (already dead)
-        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-          console.warn(`[PreviewManager] SIGTERM failed for ${pid}:`, error);
+      // Unix: Use ps to find all child processes and kill them
+      // This approach finds orphaned children better than process groups
+      exec('ps -eo pid,ppid', (error, stdout) => {
+        if (error) {
+          console.warn(`[PreviewManager] ps command failed:`, error.message);
+          // Fall back to direct process kill
+          try {
+            process.kill(pid, 'SIGTERM');
+            setTimeout(() => {
+              try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
+              resolve();
+            }, 1000);
+          } catch {
+            resolve();
+          }
+          return;
         }
-      }
-      
-      // Give processes time to cleanup, then force kill if needed
-      setTimeout(() => {
-        try {
-          process.kill(-pid, 'SIGKILL');
-          process.kill(pid, 'SIGKILL');
-        } catch {
-          // Ignore - process likely already dead
+
+        // Parse ps output to build parent-child relationships
+        const lines = stdout.trim().split('\n').slice(1); // Skip header
+        const pidMap = new Map<number, number[]>(); // parent -> children
+
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            const childPid = parseInt(parts[0], 10);
+            const parentPid = parseInt(parts[1], 10);
+            if (!isNaN(childPid) && !isNaN(parentPid)) {
+              if (!pidMap.has(parentPid)) {
+                pidMap.set(parentPid, []);
+              }
+              pidMap.get(parentPid)!.push(childPid);
+            }
+          }
         }
-        resolve();
-      }, 1000);
+
+        // Recursively collect all descendant PIDs
+        const descendants: number[] = [];
+        const collectDescendants = (parentPid: number) => {
+          const children = pidMap.get(parentPid) || [];
+          for (const child of children) {
+            descendants.push(child);
+            collectDescendants(child);
+          }
+        };
+        collectDescendants(pid);
+        
+        // Add the root PID itself
+        descendants.push(pid);
+        
+        // Reverse to kill children first (deepest first)
+        descendants.reverse();
+        
+        console.log(`[PreviewManager] Killing process tree: PIDs ${descendants.join(', ')}`);
+
+        // First send SIGTERM to all
+        for (const p of descendants) {
+          try {
+            process.kill(p, 'SIGTERM');
+          } catch (e) {
+            // ESRCH means process doesn't exist (already dead)
+            if ((e as NodeJS.ErrnoException).code !== 'ESRCH') {
+              console.warn(`[PreviewManager] SIGTERM failed for PID ${p}:`, e);
+            }
+          }
+        }
+
+        // Wait and then SIGKILL any remaining
+        setTimeout(() => {
+          for (const p of descendants) {
+            try {
+              process.kill(p, 'SIGKILL');
+            } catch {
+              // Ignore - process likely already dead
+            }
+          }
+          resolve();
+        }, 1000);
+      });
     }
   });
 }
