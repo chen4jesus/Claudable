@@ -28,6 +28,8 @@ export interface Project {
   createdAt: Date;
   updatedAt: Date;
   lastActiveAt: Date;
+  groupId: string | null;
+  groupName?: string | null;
 }
 
 export interface CreateProjectInput {

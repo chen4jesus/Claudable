@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, Trash2, Edit2, UserPlus, Check, X, Shield, ArrowLeft, Loader2, Folder, Globe } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -54,11 +54,7 @@ export default function AdminGroupsPage() {
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
-  useEffect(() => {
-    fetchGroups();
-  }, []);
-
-  async function fetchGroups() {
+  const fetchGroups = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/groups');
       if (res.status === 401) {
@@ -77,7 +73,11 @@ export default function AdminGroupsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
 
   async function fetchUsersAndMembers(groupId: string) {
     setLoadingMembers(true);
