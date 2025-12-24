@@ -1,7 +1,7 @@
 import type { Project as ProjectEntity } from '@/types/backend';
 import type { Project } from '@/types';
 
-export function serializeProject(project: ProjectEntity): Project {
+export function serializeProject(project: ProjectEntity & { group?: { name: string } | null }): Project {
   return {
     id: project.id,
     name: project.name,
@@ -16,7 +16,9 @@ export function serializeProject(project: ProjectEntity): Project {
     preferredCli: (project.preferredCli ?? null) as Project['preferredCli'],
     selectedModel: project.selectedModel ?? null,
     templateType: project.templateType ?? 'nextjs',
-    fallbackEnabled: project.fallbackEnabled
+    fallbackEnabled: project.fallbackEnabled,
+    groupId: project.groupId ?? null,
+    groupName: project.group?.name ?? (project.groupId ? null : 'Public')
   };
 }
 

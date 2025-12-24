@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ProjectSettings from '@/components/settings/ProjectSettings';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
@@ -18,6 +18,18 @@ export default function Header() {
 
   // Extract project ID from pathname if we're in a project page
   const projectId = pathname.match(/^\/([^\/]+)\/(chat|page)?$/)?.[1];
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [username, setUsername] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(res => res.json())
+      .then(data => {
+        setIsAdmin(data?.user?.role === 'admin');
+        setUsername(data?.user?.username || '');
+      })
+      .catch(() => {});
+  }, []);
 
   // Hide header on chat pages and main page (main page has its own header)
   const isChatPage = pathname.includes('/chat');
@@ -59,6 +71,28 @@ export default function Header() {
             <nav className="flex items-center gap-3" />
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+               <button
+                  className="flex items-center justify-center w-10 h-10 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
+                  onClick={() => router.push('/admin/groups')}
+                  title="Admin Settings (Groups)"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+            )}
+            {username && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-full border border-gray-100">
+                <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
+                  {username.charAt(0)}
+                </div>
+                <span className="text-sm font-medium text-gray-700">{username}</span>
+              </div>
+            )}
             {/* Global settings */}
             <button
               className="flex items-center justify-center w-10 h-10 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all duration-200"

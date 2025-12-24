@@ -157,6 +157,10 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [selectedProjectType, setSelectedProjectType] = useState<ProjectType>('nextjs');
   const [showProjectTypeDropdown, setShowProjectTypeDropdown] = useState(false);
+  const [userGroups, setUserGroups] = useState<{ id: string; name: string }[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [showGroupDropdown, setShowGroupDropdown] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
   const router = useRouter();
   
   // Ref for poll interval cleanup
@@ -281,12 +285,44 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     }
   }, []);
 
-  // Load global settings and enabled CLIs when modal opens
+  // Load global settings, enabled CLIs, and groups when modal opens
   useEffect(() => {
-    if (open && !globalSettings) {
+    if (open) {
       loadGlobalSettings();
+      fetchUserGroups();
     }
-  }, [open, globalSettings, loadGlobalSettings]);
+  }, [open, loadGlobalSettings]);
+
+  const fetchUserGroups = async () => {
+    try {
+      // First get current user to check if admin
+      const meRes = await fetch('/api/auth/me');
+      const meData = await meRes.json();
+      if (!meRes.ok) return;
+
+      setCurrentUser(meData.user);
+
+      // If admin, fetch all groups. If user, fetch their groups.
+      const groupsUrl = meData.user.role === 'admin' 
+        ? '/api/admin/groups' 
+        : '/api/auth/profile'; // Assuming profile returns user's groups or we need a new endpoint
+      
+      // Actually, I created /api/admin/users but that's admin only.
+      // Let's check how a regular user gets their groups.
+      // I'll create a new endpoint /api/users/groups or use /api/auth/me if I update it.
+      // For now, I'll use /api/admin/groups if admin, otherwise I'll need to fetch user's groups.
+      
+      const res = await fetch(meData.user.role === 'admin' ? '/api/admin/groups' : '/api/projects/groups');
+      const data = await res.json();
+      if (data.success) {
+        setUserGroups(data.data);
+        // Default to Public (null) rather than the first group
+        setSelectedGroupId(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch groups:', err);
+    }
+  };
 
   const selectedCLIOption = enabledCLIs.find(cli => cli.id === selectedCLI);
   const selectedModelOption = selectedCLIOption?.models.find(model => model.id === selectedModel);
@@ -516,6 +552,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         fallbackEnabled,
         selectedModel: finalModel,
         templateType: selectedProjectType,
+        groupId: selectedGroupId,
         cli_settings: {
           [finalCLI]: {
             model: finalModel
@@ -829,7 +866,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
           {/* Project Type Selection */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Project Type
+              Project Type <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <button
@@ -838,19 +875,14 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               >
                 <div className="flex items-center gap-3">
                   <span className="text-lg">
-                    {selectedProjectType === 'static-html' ? '📄' : 
-                     selectedProjectType === 'react' ? '⚛️' : 
-                     selectedProjectType === 'vue' ? '💚' : 
-                     selectedProjectType === 'custom' ? '🛠️' : 
-                     selectedProjectType === 'git-import' ? '📦' : 
-                     selectedProjectType === 'flask' ? '🌶️' : '▲'}
+                    {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.icon || '📁'}
                   </span>
                   <div>
-                    <div className="font-medium text-gray-900">
-                      {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.name || 'Next.js'}
+                    <div className="font-medium text-gray-900 ">
+                      {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.name}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.description || 'Full-stack React framework'}
+                    <div className="text-xs text-gray-500 ">
+                      {PROJECT_TYPE_OPTIONS.find(t => t.id === selectedProjectType)?.description}
                     </div>
                   </div>
                 </div>
@@ -865,30 +897,24 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 overflow-hidden"
+                    className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 overflow-hidden max-h-60 overflow-y-auto"
                   >
                     {PROJECT_TYPE_OPTIONS.map((type) => (
                       <button
                         key={type.id}
                         onClick={() => {
                           setSelectedProjectType(type.id);
-                          hasManuallySelectedType.current = true;
                           setShowProjectTypeDropdown(false);
+                          hasManuallySelectedType.current = true;
                         }}
                         className={`w-full p-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 last:border-b-0 ${
                           selectedProjectType === type.id ? 'bg-blue-50' : ''
                         }`}
                       >
-                        <span className="text-lg">
-                          {type.id === 'static-html' ? '📄' : 
-                           type.id === 'react' ? '⚛️' : 
-                           type.id === 'vue' ? '💚' : 
-                           type.id === 'custom' ? '🛠️' : 
-                           type.id === 'flask' ? '🌶️' : '▲'}
-                        </span>
+                        <span className="text-lg">{type.icon || '📁'}</span>
                         <div className="flex-1">
-                          <div className="font-medium text-gray-900">{type.name}</div>
-                          <div className="text-xs text-gray-500">{type.description}</div>
+                          <div className="font-medium text-gray-900 ">{type.name}</div>
+                          <div className="text-xs text-gray-500 ">{type.description}</div>
                         </div>
                         {selectedProjectType === type.id && (
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-blue-600">
@@ -902,6 +928,96 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               </AnimatePresence>
             </div>
           </div>
+
+          {/* Group Selection */}
+          {userGroups.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Project Visibility (Group)
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+                  className="w-full p-3 bg-white border border-gray-200 rounded-lg text-left flex items-center justify-between hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">{selectedGroupId ? '👥' : '🌍'}</span>
+                    <div>
+                      <div className="font-medium text-gray-900">
+                        {selectedGroupId 
+                          ? (userGroups.find(g => g.id === selectedGroupId)?.name || 'Unnamed Group')
+                          : 'Default (Public)'}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {selectedGroupId 
+                          ? 'Only members of this group will see this project.' 
+                          : 'Visible to everyone in the system.'}
+                      </div>
+                    </div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`}>
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+
+                <AnimatePresence>
+                  {showGroupDropdown && (
+                    <MotionDiv
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden max-h-48 overflow-y-auto"
+                    >
+                      <button
+                        onClick={() => {
+                          setSelectedGroupId(null);
+                          setShowGroupDropdown(false);
+                        }}
+                        className={`w-full p-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 last:border-b-0 ${
+                          selectedGroupId === null ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <span className="text-lg">🌍</span>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">Default (Public)</div>
+                          <div className="text-xs text-gray-500">Visible to everyone</div>
+                        </div>
+                        {selectedGroupId === null && (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-blue-600">
+                            <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                      {userGroups.map((group) => (
+                        <button
+                          key={group.id}
+                          onClick={() => {
+                            setSelectedGroupId(group.id);
+                            setShowGroupDropdown(false);
+                          }}
+                          className={`w-full p-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 last:border-b-0 ${
+                            selectedGroupId === group.id ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <span className="text-lg">👥</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate">
+                              {group.name || 'Unnamed Group'}
+                            </div>
+                          </div>
+                          {selectedGroupId === group.id && (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-blue-600">
+                              <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </MotionDiv>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          )}
 
           {/* AI Configuration */}
           <div className="space-y-4 mb-6">

@@ -8,7 +8,7 @@ import GlobalSettings from '@/components/settings/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import Image from 'next/image';
-import { Image as ImageIcon, LogOut, User as UserIcon } from 'lucide-react';
+import { Image as ImageIcon, LogOut, User as UserIcon, Shield } from 'lucide-react';
 import type { Project as ProjectSummary } from '@/types/project';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
@@ -95,6 +95,18 @@ export default function HomePage() {
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const selectedAssistantOption = ACTIVE_CLI_OPTIONS_MAP[selectedAssistant];
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [username, setUsername] = useState('');
+  
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(res => res.json())
+      .then(data => {
+        setIsAdmin(data?.user?.role === 'admin');
+        setUsername(data?.user?.username || '');
+      })
+      .catch(() => {});
+  }, []);
   
   // Get available models based on current assistant
   const availableModels = MODEL_OPTIONS_BY_ASSISTANT[selectedAssistant] || [];
@@ -889,6 +901,14 @@ export default function HomePage() {
                                 </span>
                               </div>
                             )}
+                            {project.groupName && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-gray-400 text-xs">•</span>
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-md border border-gray-200">
+                                  {project.groupName}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -926,7 +946,18 @@ export default function HomePage() {
             </div>
           </div>
           
-          <div className="p-2 border-t border-gray-200 flex flex-col gap-1"> 
+    <div className="p-2 border-t border-gray-200 flex flex-col gap-1"> 
+            {username && (
+              <div className="flex items-center gap-2 p-2 mb-1 bg-gray-50 rounded-lg border border-gray-100">
+                <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold uppercase shrink-0">
+                  {username.charAt(0)}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm font-semibold text-gray-900 truncate">{username}</span>
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">{isAdmin ? 'Administrator' : 'User'}</span>
+                </div>
+              </div>
+            )}
             <button 
               onClick={() => setShowGlobalSettings(true)}
               className="w-full flex items-center gap-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all text-sm"
@@ -937,6 +968,15 @@ export default function HomePage() {
               </svg>
               Settings
             </button>
+            {isAdmin && (
+              <button 
+                onClick={() => router.push('/admin/groups')}
+                className="w-full flex items-center gap-2 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all text-sm"
+              >
+                <Shield size={18} />
+                User Groups
+              </button>
+            )}
             <button 
               onClick={handleLogout}
               className="w-full flex items-center gap-2 p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all text-sm"

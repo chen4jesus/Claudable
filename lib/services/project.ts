@@ -18,15 +18,42 @@ const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
 /**
  * Retrieve all projects
  */
-export async function getAllProjects(): Promise<Project[]> {
+export async function getAllProjects(userId?: string, isAdmin?: boolean): Promise<Project[]> {
+  let whereClause = {};
+
+  if (userId && !isAdmin) {
+    // Determine which projects the user can see
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { groups: { select: { id: true } } },
+    });
+    
+    const userGroupIds = user?.groups.map(g => g.id) || [];
+    
+    whereClause = {
+      OR: [
+        { groupId: null }, // Publicly available (or legacy)
+        { groupId: { in: userGroupIds } },
+      ],
+    };
+  }
+
   const projects = await prisma.project.findMany({
+    where: whereClause,
     orderBy: {
       lastActiveAt: 'desc',
     },
+    include: {
+      group: {
+         select: { name: true }
+      }
+    }
   });
+
   return projects.map(project => ({
     ...project,
     selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
+    groupName: project.group?.name
   })) as Project[];
 }
 
@@ -93,7 +120,13 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       lastActiveAt: new Date(),
       previewUrl: null,
       previewPort: null,
+      groupId: (input as any).groupId || null,
     } as any,
+    include: {
+      group: {
+        select: { name: true }
+      }
+    }
   });
 
   // Handle GitHub Auto-Connect for Git Imports
@@ -181,6 +214,9 @@ export async function updateProject(
       ...input,
       ...(input.selectedModel
         ? { selectedModel: normalizedModel }
+        : {}),
+      ...((input as any).groupId !== undefined
+        ? { groupId: (input as any).groupId }
         : {}),
       updatedAt: new Date(),
     },

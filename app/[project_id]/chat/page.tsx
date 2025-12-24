@@ -371,6 +371,18 @@ export default function ChatPage() {
   const lineNumberRef = useRef<HTMLDivElement>(null);
   const editedContentRef = useRef<string>('');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+  const [username, setUsername] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(res => res.json())
+      .then(data => {
+        setUsername(data?.user?.username || '');
+        setIsAdmin(data?.user?.role === 'admin');
+      })
+      .catch(() => {});
+  }, []);
   const activeBrandColor =
     assistantBrandColors[preferredCli] || assistantBrandColors[DEFAULT_ACTIVE_CLI];
   const modelOptions = useMemo(() => buildModelOptions(cliStatuses), [cliStatuses]);
@@ -2683,7 +2695,7 @@ const persistProjectPreferences = useCallback(
                     <FaCog size={16} />
                   </button>
 
-                  {/* Logout Button */}
+                   {/* Logout Button */}
                   <button 
                     onClick={handleLogout}
                     className="h-9 w-9 flex items-center justify-center bg-gray-100 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -2691,6 +2703,18 @@ const persistProjectPreferences = useCallback(
                   >
                     <LogOut size={16} />
                   </button>
+
+                  {username && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-lg border border-gray-100 ml-1">
+                      <div className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold uppercase shrink-0">
+                        {username.charAt(0)}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold text-gray-900 truncate max-w-[100px]">{username}</span>
+                        <span className="text-[10px] text-gray-500 uppercase tracking-wider">{isAdmin ? 'Admin' : 'User'}</span>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Stop Button */}
                   {showPreview && previewUrl && (

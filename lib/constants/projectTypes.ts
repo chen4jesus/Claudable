@@ -17,36 +17,43 @@ export const PROJECT_TYPE_OPTIONS: ProjectTypeOption[] = [
     id: 'nextjs',
     name: 'Next.js',
     description: 'Full-stack React framework with App Router',
+    icon: '⚡',
   },
   {
     id: 'static-html',
     name: 'Static HTML',
     description: 'Plain HTML, CSS, and JavaScript website',
+    icon: '📄',
   },
   {
     id: 'react',
     name: 'React',
     description: 'React single-page application',
+    icon: '⚛️',
   },
   {
     id: 'vue',
     name: 'Vue.js',
     description: 'Vue.js application',
+    icon: '🖖',
   },
   {
     id: 'flask',
     name: 'Python Flask',
     description: 'Python 3.x web server with Flask',
+    icon: '🌶️',
   },
   {
     id: 'custom',
     name: 'Custom',
     description: 'Custom project without specific framework',
+    icon: '🛠️',
   },
   {
     id: 'git-import',
     name: 'Import from Git',
     description: 'Clone an existing Git repository',
+    icon: '📥',
   },
 ];
 

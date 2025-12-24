@@ -40,6 +40,8 @@ export interface Project {
   selectedModel?: string | null;
   templateType?: TemplateType | null;
   fallbackEnabled?: boolean;
+  groupId?: string | null;
+  groupName?: string | null;
 }
 
 export interface ProjectSettings {

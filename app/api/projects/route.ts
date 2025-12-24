@@ -11,13 +11,20 @@ import { serializeProjects, serializeProject } from '@/lib/serializers/project';
 import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/utils/api-response';
 
+import { getSession } from '@/lib/auth';
+import { getUserGroups } from '@/lib/services/users';
+
 /**
  * GET /api/projects
  * Get all projects list
  */
 export async function GET() {
   try {
-    const projects = await getAllProjects();
+    const session = await getSession();
+    const userId = session?.user?.id;
+    const isAdmin = session?.user?.role === 'admin';
+    
+    const projects = await getAllProjects(userId, isAdmin);
     return createSuccessResponse(serializeProjects(projects));
   } catch (error) {
     return handleApiError(error, 'API', 'Failed to fetch projects');
@@ -34,6 +41,19 @@ export async function POST(request: NextRequest) {
     const preferredCli = String(body.preferredCli || body.preferred_cli || 'claude').toLowerCase();
     const requestedModel = body.selectedModel || body.selected_model;
 
+    const session = await getSession();
+    // Check if groupId was provided at all
+    let groupId = body.hasOwnProperty('groupId') ? body.groupId : body.group_id;
+
+    // Auto-assign to user's first group ONLY if not specified at all (undefined)
+    // If it's null, it means the user explicitly chose 'Public'
+    if (groupId === undefined && session?.user?.id) {
+       const userGroups = await getUserGroups(session.user.id);
+       if (userGroups.length > 0) {
+          groupId = userGroups[0].id;
+       }
+    }
+
     const input: CreateProjectInput = {
       project_id: body.project_id,
       name: body.name,
@@ -43,7 +63,8 @@ export async function POST(request: NextRequest) {
       description: body.description,
       templateType: body.templateType || body.template_type || 'nextjs',
       gitRepoUrl: body.gitRepoUrl || body.git_repo_url,
-    };
+      groupId: groupId,
+    } as any;
 
     // Validation
     if (!input.project_id || !input.name) {
