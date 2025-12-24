@@ -121,6 +121,100 @@ function killProcessTree(pid: number): Promise<void> {
   });
 }
 
+/**
+ * Kill orphaned preview processes by matching command patterns.
+ * This catches processes that may have been orphaned from previous sessions.
+ * Only runs on Unix systems.
+ */
+function killOrphanedPreviewProcesses(): Promise<{ killed: number[]; errors: string[] }> {
+  return new Promise((resolve) => {
+    if (isWindows) {
+      // Windows doesn't typically have this orphan problem with taskkill /T
+      resolve({ killed: [], errors: [] });
+      return;
+    }
+
+    // Patterns that indicate preview-related processes
+    // Be careful not to kill the main Next.js process!
+    const previewPatterns = [
+      /npm run dev/,
+      /npm exec serve/,
+      /npx serve/,
+      /python.*wsgi\.py/,
+      /python.*app\.py/,
+      /flask run/,
+      /next dev/,
+      /vite/,
+      /MainThread/,
+    ];
+
+    // Get our own PID to avoid killing ourselves
+    const myPid = process.pid;
+    const parentPid = process.ppid;
+
+    exec('ps -eo pid,ppid,cmd', (error, stdout) => {
+      if (error) {
+        console.warn('[PreviewManager] Failed to list processes:', error.message);
+        resolve({ killed: [], errors: [error.message] });
+        return;
+      }
+
+      const lines = stdout.trim().split('\n').slice(1); // Skip header
+      const killed: number[] = [];
+      const errors: string[] = [];
+
+      for (const line of lines) {
+        const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+        if (!match) continue;
+
+        const pid = parseInt(match[1], 10);
+        const ppid = parseInt(match[2], 10);
+        const cmd = match[3];
+
+        // Skip our own process and parent
+        if (pid === myPid || pid === parentPid || ppid === myPid) {
+          continue;
+        }
+
+        // Skip PID 1 and very low PIDs (system processes)
+        if (pid <= 10) continue;
+
+        // Check if command matches any preview pattern
+        const isPreviewProcess = previewPatterns.some(pattern => pattern.test(cmd));
+        
+        if (isPreviewProcess) {
+          console.log(`[PreviewManager] Found orphaned preview process: PID ${pid} - ${cmd.substring(0, 80)}`);
+          try {
+            process.kill(pid, 'SIGTERM');
+            killed.push(pid);
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'ESRCH') {
+              errors.push(`Failed to kill PID ${pid}: ${e}`);
+            }
+          }
+        }
+      }
+
+      // If we killed any, wait and force kill remaining
+      if (killed.length > 0) {
+        console.log(`[PreviewManager] Sent SIGTERM to ${killed.length} orphaned processes: ${killed.join(', ')}`);
+        setTimeout(() => {
+          for (const pid of killed) {
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch {
+              // Ignore - already dead
+            }
+          }
+          resolve({ killed, errors });
+        }, 1000);
+      } else {
+        resolve({ killed, errors });
+      }
+    });
+  });
+}
+
 // Piper command options - try specific binaries first, then module execution
 const pipOptions = process.platform === 'win32' 
   ? [{ cmd: 'pip', args: [] }, { cmd: 'python', args: ['-m', 'pip'] }]
@@ -1736,6 +1830,20 @@ ${scriptContent}
     
     // Clear the processes map
     this.processes.clear();
+
+    // Also kill any orphaned processes that might have leaked
+    try {
+      console.log('[PreviewManager] Scanning for orphaned processes...');
+      const { killed, errors } = await killOrphanedPreviewProcesses();
+      if (killed.length > 0) {
+        console.log(`[PreviewManager] Cleaned up ${killed.length} orphaned processes.`);
+      }
+      if (errors.length > 0) {
+        console.warn('[PreviewManager] Errors during orphan cleanup:', errors);
+      }
+    } catch (e) {
+      console.error('[PreviewManager] Failed to cleanup orphans:', e);
+    }
     
     console.log('[PreviewManager] All preview processes stopped.');
   }

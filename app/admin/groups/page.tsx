@@ -301,7 +301,7 @@ export default function AdminGroupsPage() {
                 ) : (
                   <RefreshCw size={18} />
                 )}
-                Recycle Previews
+                Recycle Server
               </button>
               
               <button
