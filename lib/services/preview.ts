@@ -39,19 +39,23 @@ function killProcessTree(pid: number): Promise<void> {
       });
     } else {
       // Unix: kill the process group using negative PID
+      // We use both group kill and specific PID kill to be thorough
       try {
         // The negative PID kills all processes in the process group
         process.kill(-pid, 'SIGTERM');
+        process.kill(pid, 'SIGTERM');
       } catch (error) {
         // ESRCH means process/group doesn't exist (already dead)
         if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-          console.warn(`[PreviewManager] Failed to kill process group ${pid}:`, error);
+          console.warn(`[PreviewManager] SIGTERM failed for ${pid}:`, error);
         }
       }
+      
       // Give processes time to cleanup, then force kill if needed
       setTimeout(() => {
         try {
           process.kill(-pid, 'SIGKILL');
+          process.kill(pid, 'SIGKILL');
         } catch {
           // Ignore - process likely already dead
         }

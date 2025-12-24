@@ -21,7 +21,7 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y curl git sudo build-essential && \
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     apt-get install -y nodejs && \
-    apt-get install -y python3 python3-pip python3-venv python-is-python3 gosu && \
+    apt-get install -y python3 python3-pip python3-venv python-is-python3 gosu tini && \
     rm -rf /var/lib/apt/lists/*
 
 # --- Application Dependencies Layer (Cached) ---
@@ -96,7 +96,7 @@ WORKDIR /var/local/Claudable
 ENV HOSTNAME "0.0.0.0"
 ENV DATABASE_URL "file:/var/local/Claudable/data/cc.db"
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["tini", "--", "docker-entrypoint.sh"]
 
 # 15. npm start (runs as claude via entrypoint gosu)
 CMD ["npm", "start"]
