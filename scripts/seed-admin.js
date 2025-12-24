@@ -18,13 +18,17 @@ async function main() {
 
   console.log(`Seeding user: ${username}...`);
 
-  const user = await prisma.user.upsert({
+  const existingUser = await prisma.user.findUnique({
     where: { username },
-    update: { 
-      password: hashedPassword,
-      role: 'admin'
-    },
-    create: {
+  });
+
+  if (existingUser) {
+    console.log(`User ${username} already exists. Skipping.`);
+    return;
+  }
+
+  const user = await prisma.user.create({
+    data: {
       username,
       password: hashedPassword,
       role: 'admin'
