@@ -18,7 +18,7 @@ WORKDIR /var/local/Claudable
 # 5. sudo apt install -y nodejs
 # 6. sudo apt install -y python3 ...
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl git sudo build-essential cron && \
+    apt-get install -y curl git sudo build-essential && \
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     apt-get install -y nodejs && \
     apt-get install -y python3 python3-pip python3-venv python-is-python3 gosu tini && \

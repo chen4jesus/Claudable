@@ -1,9 +1,8 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, Trash2, Edit2, UserPlus, Check, X, Shield, ArrowLeft, Loader2, Folder, Globe } from 'lucide-react';
+import { Users, Plus, Trash2, Edit2, UserPlus, Check, X, Shield, ArrowLeft, Loader2, Folder, Globe, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Group {
@@ -53,6 +52,9 @@ export default function AdminGroupsPage() {
   // Projects Management
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Recycle (stop all previews)
+  const [recycling, setRecycling] = useState(false);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -230,6 +232,27 @@ export default function AdminGroupsPage() {
     }
   };
 
+  const handleRecycle = async () => {
+    if (!confirm('This will stop ALL running preview processes. Continue?')) return;
+    
+    setRecycling(true);
+    try {
+      const res = await fetch('/api/admin/recycle', { method: 'POST' });
+      const data = await res.json();
+      
+      if (data.success) {
+        alert('All preview processes have been stopped successfully.');
+      } else {
+        alert(`Failed to recycle: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Recycle failed:', err);
+      alert('Failed to stop preview processes. Check console for details.');
+    } finally {
+      setRecycling(false);
+    }
+  };
+
   if (loading) {
      return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -266,17 +289,33 @@ export default function AdminGroupsPage() {
                  </div>
             </div>
             
-            <button
-              onClick={() => {
-                setEditingGroup(null);
-                setFormData({ name: '', description: '' });
-                setShowCreateModal(true);
-              }}
-              className="px-5 py-2.5 bg-gray-900 text-white rounded-xl font-medium shadow-lg shadow-gray-200 hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
-            >
-              <Plus size={18} />
-              Create Group
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRecycle}
+                disabled={recycling}
+                className="px-4 py-2.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-xl font-medium hover:bg-orange-100 hover:border-orange-300 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Stop all running preview processes"
+              >
+                {recycling ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={18} />
+                )}
+                Recycle Previews
+              </button>
+              
+              <button
+                onClick={() => {
+                  setEditingGroup(null);
+                  setFormData({ name: '', description: '' });
+                  setShowCreateModal(true);
+                }}
+                className="px-5 py-2.5 bg-gray-900 text-white rounded-xl font-medium shadow-lg shadow-gray-200 hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
+              >
+                <Plus size={18} />
+                Create Group
+              </button>
+            </div>
         </div>
 
         {/* Grid */}

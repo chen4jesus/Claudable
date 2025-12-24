@@ -1709,6 +1709,37 @@ ${scriptContent}
     return processInfo ? [...processInfo.logs] : [];
   }
 
+  /**
+   * Stop all running preview processes.
+   * Used for cleanup when the application exits or browser closes.
+   */
+  public async stopAll(): Promise<void> {
+    const projectIds = Array.from(this.processes.keys());
+    if (projectIds.length === 0) {
+      return;
+    }
+    
+    console.log(`[PreviewManager] Stopping all ${projectIds.length} preview processes...`);
+    
+    // Kill all processes in parallel
+    const killPromises: Promise<void>[] = [];
+    
+    for (const [projectId, processInfo] of this.processes.entries()) {
+      if (processInfo.process?.pid) {
+        const pid = processInfo.process.pid;
+        console.log(`[PreviewManager] Killing preview for project ${projectId} (PID ${pid})`);
+        killPromises.push(killProcessTree(pid));
+      }
+    }
+    
+    await Promise.all(killPromises);
+    
+    // Clear the processes map
+    this.processes.clear();
+    
+    console.log('[PreviewManager] All preview processes stopped.');
+  }
+
   private toInfo(processInfo: PreviewProcess): PreviewInfo {
     return {
       port: processInfo.port,
@@ -2026,4 +2057,3 @@ const globalPreviewManager = globalThis as unknown as {
 export const previewManager: PreviewManager =
   globalPreviewManager.__claudable_preview_manager_v3__ ??
   (globalPreviewManager.__claudable_preview_manager_v3__ = new PreviewManager());
-
