@@ -17,6 +17,7 @@ type GlobalSettingsCtx = {
   settings: GlobalAISettings;
   setSettings: React.Dispatch<React.SetStateAction<GlobalAISettings>>;
   refresh: () => Promise<void>;
+  isLoading: boolean;
 };
 
 const defaultSettings: GlobalAISettings = {
@@ -40,16 +41,19 @@ export function useGlobalSettings() {
 export default function GlobalSettingsProvider({ children }: { children: React.ReactNode }) {
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
   const [settings, setSettings] = useState<GlobalAISettings>(defaultSettings);
+  const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/settings/global`);
+      const res = await fetch(`${API_BASE}/api/settings/global`, { cache: 'no-store' });
       if (res.ok) {
         const s = await res.json();
         setSettings(s);
       }
     } catch (e) {
       console.warn('Failed to refresh global settings', e);
+    } finally {
+      setIsLoading(false);
     }
   }, [API_BASE]);
 
@@ -58,7 +62,7 @@ export default function GlobalSettingsProvider({ children }: { children: React.R
     refresh();
   }, [refresh]);
 
-  const value = useMemo(() => ({ settings, setSettings, refresh }), [settings, refresh]);
+  const value = useMemo(() => ({ settings, setSettings, refresh, isLoading }), [settings, refresh, isLoading]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

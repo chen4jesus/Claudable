@@ -104,13 +104,15 @@ export default function HomePage() {
   const [loadingStages, setLoadingStages] = useState({
     auth: false,
     cli: false,
-    projects: false
+    projects: false,
+    settings: false
   });
-  const isFullyLoaded = loadingStages.auth && loadingStages.cli && loadingStages.projects;
-  const loadingProgress = [loadingStages.auth, loadingStages.cli, loadingStages.projects].filter(Boolean).length;
-  const loadingMessage = !loadingStages.auth ? 'Checking authentication...' 
-    : !loadingStages.cli ? 'Loading AI assistants...'
+  const isFullyLoaded = loadingStages.auth && loadingStages.cli && loadingStages.projects && loadingStages.settings;
+  const loadingProgress = [loadingStages.auth, loadingStages.cli, loadingStages.projects, loadingStages.settings].filter(Boolean).length;
+  const loadingMessage = !loadingStages.auth ? 'Checking authentication...'
     : !loadingStages.projects ? 'Loading projects...'
+    : !loadingStages.settings ? 'Loading settings...'
+    : !loadingStages.cli ? 'Loading AI assistants...'
     : 'Ready!';
   
   useEffect(() => {
@@ -130,17 +132,20 @@ export default function HomePage() {
   const availableModels = MODEL_OPTIONS_BY_ASSISTANT[selectedAssistant] || [];
   
   // Sync with Global Settings (until user overrides locally)
-  const { settings: globalSettings } = useGlobalSettings();
+  const { settings: globalSettings, isLoading: globalSettingsLoading } = useGlobalSettings();
   
   // Check if this is a fresh page load (not navigation)
   useEffect(() => {
     const isPageRefresh = !sessionStorage.getItem('navigationFlag');
     
+    if (globalSettingsLoading) return;
+
     if (isPageRefresh) {
       // Fresh page load or refresh - use global defaults
       sessionStorage.setItem('navigationFlag', 'true');
       setIsInitialLoad(true);
       setUsingGlobalDefaults(true);
+      // Don't set settings:true here, wait for the effect below to apply them
     } else {
       // Navigation within session - check for stored selections
       const storedAssistantRaw = sessionStorage.getItem('selectedAssistant');
@@ -153,25 +158,32 @@ export default function HomePage() {
         setSelectedModel(storedModel);
         setUsingGlobalDefaults(false);
         setIsInitialLoad(false);
+        setLoadingStages(prev => ({ ...prev, settings: true }));
         return;
       }
     }
+    
+    // Fallback: don't set settings:true here either
     
     // Clean up navigation flag on unmount
     return () => {
       // Don't clear on navigation, only on actual page unload
     };
-  }, [sanitizeAssistant, normalizeModelForAssistant]);
+  }, [sanitizeAssistant, normalizeModelForAssistant, globalSettingsLoading]);
   
   // Apply global settings when using defaults
   useEffect(() => {
+    if (globalSettingsLoading) return;
     if (!usingGlobalDefaults || !isInitialLoad) return;
     
     const cli = sanitizeAssistant(globalSettings?.default_cli);
     setSelectedAssistant(cli);
     const modelFromGlobal = globalSettings?.cli_settings?.[cli]?.model;
     setSelectedModel(normalizeModelForAssistant(cli, modelFromGlobal));
-  }, [globalSettings, usingGlobalDefaults, isInitialLoad, sanitizeAssistant, normalizeModelForAssistant]);
+    
+    // Mark settings as loaded only after applying them
+    setLoadingStages(prev => ({ ...prev, settings: true }));
+  }, [globalSettings, usingGlobalDefaults, isInitialLoad, sanitizeAssistant, normalizeModelForAssistant, globalSettingsLoading]);
   
   // Save selections to sessionStorage when they change
   useEffect(() => {
@@ -778,7 +790,7 @@ export default function HomePage() {
               <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-gradient-to-r from-[#DE7356] to-[#c45f45] rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${(loadingProgress / 3) * 100}%` }}
+                  style={{ width: `${(loadingProgress / 4) * 100}%` }}
                 />
               </div>
               
@@ -793,11 +805,14 @@ export default function HomePage() {
                 <span className={loadingStages.auth ? 'text-green-600' : ''}>
                   {loadingStages.auth ? '✓' : '○'} Auth
                 </span>
-                <span className={loadingStages.cli ? 'text-green-600' : ''}>
-                  {loadingStages.cli ? '✓' : '○'} AI
-                </span>
                 <span className={loadingStages.projects ? 'text-green-600' : ''}>
                   {loadingStages.projects ? '✓' : '○'} Projects
+                </span>
+                <span className={loadingStages.settings ? 'text-green-600' : ''}>
+                  {loadingStages.settings ? '✓' : '○'} Config
+                </span>
+                <span className={loadingStages.cli ? 'text-green-600' : ''}>
+                  {loadingStages.cli ? '✓' : '○'} AI
                 </span>
               </div>
             </div>
