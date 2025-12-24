@@ -172,7 +172,10 @@ configure_claude() {
                 ANTHROPIC_AUTH_TOKEN: apiKey,
                 ANTHROPIC_BASE_URL: "'"$API_BASE_URL"'",
                 API_TIMEOUT_MS: "'"$API_TIMEOUT_MS"'",
-                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1
+                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1,
+                ANTHROPIC_DEFAULT_HAIKU_MODEL: "glm-4.5-air",
+                ANTHROPIC_DEFAULT_SONNET_MODEL: "glm-4.7",
+                ANTHROPIC_DEFAULT_OPUS_MODEL: "glm-4.7"
             }
         }, null, 2), "utf-8");
     ' || {
