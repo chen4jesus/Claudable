@@ -4,6 +4,7 @@
 # Excludes PIDs listed in /tmp/protected_pids AND all their descendants
 
 PROTECTED_PIDS_FILE="/tmp/protected_pids"
+LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
 
 # Function to get all descendant PIDs of a given PID
 get_descendants() {
@@ -25,8 +26,10 @@ fi
 # Convert to pipe-separated for awk
 EXCLUDE_PATTERN=$(echo $ALL_PROTECTED | tr ' ' '|' | sed 's/^|//;s/|$//')
 
+echo "$LOG_PREFIX Protected PIDs: $ALL_PROTECTED"
+
 # Get stale processes and filter out protected PIDs and their descendants
-ps -u claude -o pid,etimes,cputime --no-headers 2>/dev/null | \
+STALE_PIDS=$(ps -u claude -o pid,etimes,cputime --no-headers 2>/dev/null | \
     awk -v exclude="$EXCLUDE_PATTERN" '
         BEGIN { split(exclude, pids, "|") }
         $2 > 1800 && $3 ~ /^00:00:0[0-9]$/ {
@@ -34,6 +37,13 @@ ps -u claude -o pid,etimes,cputime --no-headers 2>/dev/null | \
             for (i in pids) { if ($1 == pids[i]) protected = 1 }
             if (!protected) print $1
         }
-    ' | xargs -r kill 2>/dev/null
+    ')
+
+if [ -n "$STALE_PIDS" ]; then
+    echo "$LOG_PREFIX Killing stale PIDs: $STALE_PIDS"
+    echo "$STALE_PIDS" | xargs -r kill 2>/dev/null
+else
+    echo "$LOG_PREFIX No stale processes found to kill"
+fi
 
 exit 0
