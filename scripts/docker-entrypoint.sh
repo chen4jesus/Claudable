@@ -97,6 +97,11 @@ npx prisma db push
 echo "👤 Seeding default admin user..."
 node scripts/seed-admin.js
 
+# Save current shell PID and the PID of the main process (npm start) to protected list
+# This prevents the cleanup script from killing essential processes
+PROTECTED_PIDS_FILE="/tmp/protected_pids"
+echo "$$" > "$PROTECTED_PIDS_FILE"  # Current shell PID
+
 # Execute the main command
 exec "$@"
 
