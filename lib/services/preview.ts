@@ -129,8 +129,76 @@ function killProcessTree(pid: number): Promise<void> {
 function killOrphanedPreviewProcesses(): Promise<{ killed: number[]; errors: string[] }> {
   return new Promise((resolve) => {
     if (isWindows) {
-      // Windows doesn't typically have this orphan problem with taskkill /T
-      resolve({ killed: [], errors: [] });
+      // Windows implementation using wmic to get command lines
+      exec('wmic process get ProcessId,CommandLine /FORMAT:CSV', (error, stdout) => {
+        if (error) {
+           // wmic might fail if not in path or permissions, though rare on standard windows
+           console.warn('[PreviewManager] wmic failed:', error.message);
+           resolve({ killed: [], errors: [error.message] });
+           return;
+        }
+
+        const lines = stdout.trim().split('\r\n').slice(1); // Skip header (Node,CommandLine,ProcessId)
+        const killed: number[] = [];
+        const errors: string[] = [];
+
+        // Get our own PID to avoid killing ourselves
+        const myPid = process.pid;
+        const parentPid = process.ppid; // On Windows ppid might be loose, but let's check
+
+        for (const line of lines) {
+           if (!line.trim()) continue;
+           
+           // wmic CSV format: Node,CommandLine,ProcessId
+           // Note: CommandLine might contain commas, so we need careful parsing or just split by comma and take last as PID?
+           // Actually wmic CSV output is tricky with commas in values.
+           // Better approach: regex from end for PID.
+           // Line usually starts with node name (computer name).
+           
+           // Simple CSV parse assuming no commas in PID. 
+           // Last comma separates PID.
+           const lastCommaIdx = line.lastIndexOf(',');
+           if (lastCommaIdx === -1) continue;
+           
+           const pidStr = line.substring(lastCommaIdx + 1).trim();
+           // CommandLine is everything after first comma up to last comma
+           const firstCommaIdx = line.indexOf(',');
+           if (firstCommaIdx === -1 || firstCommaIdx === lastCommaIdx) continue;
+           
+           const cmd = line.substring(firstCommaIdx + 1, lastCommaIdx);
+           const pid = parseInt(pidStr, 10);
+
+           if (isNaN(pid)) continue;
+
+           // Skip ourselves
+           if (pid === myPid || pid === parentPid) continue;
+           
+           // Skip system processes
+           if (pid <= 4) continue; 
+
+           const isPreviewProcess = previewPatterns.some(pattern => pattern.test(cmd));
+           
+           if (isPreviewProcess) {
+             console.log(`[PreviewManager] Found orphaned preview process (Windows): PID ${pid} - ${cmd.substring(0, 80)}...`);
+             try {
+                // kill with /F (force)
+                exec(`taskkill /pid ${pid} /F`, (err) => {
+                    if (err) {
+                        errors.push(`Failed to kill PID ${pid}: ${err.message}`);
+                    }
+                });
+                killed.push(pid);
+             } catch (e) {
+                errors.push(`Failed to trigger kill for PID ${pid}: ${e}`);
+             }
+           }
+        }
+        
+        // Give it a moment for the execs to fire
+        setTimeout(() => {
+            resolve({ killed, errors });
+        }, 500);
+      });
       return;
     }
 
@@ -152,7 +220,9 @@ function killOrphanedPreviewProcesses(): Promise<{ killed: number[]; errors: str
     const myPid = process.pid;
     const parentPid = process.ppid;
 
-    exec('ps -eo pid,ppid,cmd', (error, stdout) => {
+    // Use -ww to avoid truncation of long command lines (essential for matching arguments)
+    // Use 'args' which is the standard for full command line with arguments
+    exec('ps -ww -eo pid,ppid,args', (error, stdout) => {
       if (error) {
         console.warn('[PreviewManager] Failed to list processes:', error.message);
         resolve({ killed: [], errors: [error.message] });
@@ -1809,9 +1879,10 @@ ${scriptContent}
    */
   public async stopAll(): Promise<void> {
     const projectIds = Array.from(this.processes.keys());
-    if (projectIds.length === 0) {
-      return;
-    }
+
+    // REMOVED early return: if (projectIds.length === 0) return;
+    // We proceed to check for orphans even if no projects are tracked in memory.
+
     
     console.log(`[PreviewManager] Stopping all ${projectIds.length} preview processes...`);
     
