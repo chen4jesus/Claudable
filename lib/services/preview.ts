@@ -2,7 +2,7 @@
  * PreviewManager - Handles per-project development servers (live preview)
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, exec, type ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
@@ -20,6 +20,46 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const yarnCommand = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
 const bunCommand = process.platform === 'win32' ? 'bun.exe' : 'bun';
+const isWindows = process.platform === 'win32';
+
+/**
+ * Kill an entire process tree (parent + all descendants)
+ * On Windows: uses taskkill /T /F
+ * On Unix: uses process groups with negative PID
+ */
+function killProcessTree(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (isWindows) {
+      // Windows: use taskkill with /T (tree) and /F (force)
+      exec(`taskkill /pid ${pid} /T /F`, (error) => {
+        if (error) {
+          console.warn(`[PreviewManager] taskkill failed for PID ${pid}:`, error.message);
+        }
+        resolve();
+      });
+    } else {
+      // Unix: kill the process group using negative PID
+      try {
+        // The negative PID kills all processes in the process group
+        process.kill(-pid, 'SIGTERM');
+      } catch (error) {
+        // ESRCH means process/group doesn't exist (already dead)
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          console.warn(`[PreviewManager] Failed to kill process group ${pid}:`, error);
+        }
+      }
+      // Give processes time to cleanup, then force kill if needed
+      setTimeout(() => {
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          // Ignore - process likely already dead
+        }
+        resolve();
+      }, 1000);
+    }
+  });
+}
 
 // Piper command options - try specific binaries first, then module execution
 const pipOptions = process.platform === 'win32' 
@@ -1320,6 +1360,7 @@ class PreviewManager {
        spawnOptions = {
          cwd: projectPath,
          env,
+         detached: !isWindows, // Create new process group on Unix for tree termination
          shell: useShell,
          stdio: ['ignore', 'pipe', 'pipe'],
        };
@@ -1337,6 +1378,7 @@ class PreviewManager {
           env,
           shell: useShell,
           stdio: ['ignore', 'pipe', 'pipe'],
+          detached: !isWindows, // Create new process group on Unix for tree termination
         };
     } else {
         // Node/Next logic
@@ -1355,6 +1397,7 @@ class PreviewManager {
           },
           shell: useShell, // Required on Windows to avoid EINVAL
           stdio: useShell ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+          detached: !isWindows, // Create new process group on Unix for tree termination
         };
     }
 
@@ -1469,34 +1512,38 @@ class PreviewManager {
     }
 
     if (processInfo.process) {
-      // ... same process termination logic ...
-      await new Promise<void>((resolve) => {
-        const proc = processInfo.process!;
-        // If already exited, resolve immediately
-        if (proc.exitCode !== null) {
-          resolve();
-          return;
-        }
-
-        // Wait for exit with timeout
-        const timeout = setTimeout(() => {
-          console.warn(`[PreviewManager] Process ${proc.pid} did not exit within 2000ms after SIGTERM.`);
-          resolve();
-        }, 5000);
-
-        proc.once('exit', () => {
-          clearTimeout(timeout);
-          resolve();
+      const proc = processInfo.process;
+      const pid = proc.pid;
+      
+      if (pid) {
+        console.log(`[PreviewManager] Killing process tree for PID ${pid}`);
+        await killProcessTree(pid);
+        
+        // Wait briefly for process to fully terminate
+        await new Promise<void>((resolve) => {
+          if (proc.exitCode !== null) {
+            resolve();
+            return;
+          }
+          
+          const timeout = setTimeout(() => {
+            console.warn(`[PreviewManager] Process ${pid} did not exit after tree kill, forcing cleanup.`);
+            resolve();
+          }, 3000);
+          
+          proc.once('exit', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
         });
-
+      } else {
+        // No PID available, try direct kill
         try {
           proc.kill('SIGTERM');
         } catch (error) {
           console.error('[PreviewManager] Failed to stop preview process:', error);
-          clearTimeout(timeout);
-          resolve();
         }
-      });
+      }
     }
 
     this.processes.delete(projectId);
