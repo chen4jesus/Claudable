@@ -499,7 +499,7 @@ console.debug(\`📂 Serving directory: \${serveTarget}\`);
 
 const child = spawn(
   'npx',
-  ['serve', '-s', serveTarget, '-p', String(port), '-l', '0.0.0.0'],
+  ['serve', '-s', serveTarget, '-p', String(port), '-l', 'tcp://0.0.0.0:${port}'],
   {
     cwd: projectRoot,
     stdio: 'inherit',
@@ -1542,6 +1542,7 @@ instance/
 .vscode/
 *.swp
 *.swo
+.claudable/
 
 # OS
 .DS_Store

@@ -77,12 +77,10 @@ fi
 npm run ensure:env
 
 # Run prisma db push to ensure schema matches
-# Override DATABASE_URL to absolute path to ensure we init the file at root/data (where App looks)
-# and not prisma/data (where CLI looks by default relative to schema)
-DATABASE_URL="file:/var/local/Claudable/data/cc.db" npx prisma db push
+npx prisma db push
 
 echo "👤 Seeding default admin user..."
-DATABASE_URL="file:/var/local/Claudable/data/cc.db" node scripts/seed-admin.js
+node scripts/seed-admin.js
 
 # Execute the main command
 exec "$@"
