@@ -7,6 +7,10 @@ CLAUDE_JSON_FILE="$HOME/.claude.json"
 API_BASE_URL="https://api.z.ai/api/anthropic"
 API_TIMEOUT_MS=3000000
 
+ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-4.5-air"
+ANTHROPIC_DEFAULT_SONNET_MODEL="glm-4.7"
+ANTHROPIC_DEFAULT_OPUS_MODEL="glm-4.7"
+
 # If running as root, fix permissions and drop privileges
 if [ "$(id -u)" = '0' ]; then
     echo "Updating permissions for /var/local/Claudable/data"
@@ -49,7 +53,10 @@ if [ -n "${CLAUDE_API_KEY:-}" ]; then
                 ANTHROPIC_AUTH_TOKEN: '$CLAUDE_API_KEY',
                 ANTHROPIC_BASE_URL: '$API_BASE_URL',
                 API_TIMEOUT_MS: '$API_TIMEOUT_MS',
-                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1
+                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1,
+                ANTHROPIC_DEFAULT_HAIKU_MODEL: '$ANTHROPIC_DEFAULT_HAIKU_MODEL',
+                ANTHROPIC_DEFAULT_SONNET_MODEL: '$ANTHROPIC_DEFAULT_SONNET_MODEL',
+                ANTHROPIC_DEFAULT_OPUS_MODEL: '$ANTHROPIC_DEFAULT_OPUS_MODEL'
             }
         };
         
