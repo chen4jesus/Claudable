@@ -22,14 +22,6 @@ if [ "$(id -u)" = '0' ]; then
         chown -R claude:claude /var/local/Claudable/prisma
     fi
     
-    # Setup cron job for stale process cleanup (runs every 5 minutes)
-    echo "⏰ Setting up cron job for stale process cleanup..."
-    chmod +x /var/local/Claudable/scripts/cleanup-stale-processes.sh
-    echo "*/5 * * * * /var/local/Claudable/scripts/cleanup-stale-processes.sh >> /var/log/cleanup.log 2>&1" | crontab -u claude -
-    
-    # Start cron service
-    service cron start
-    
     # Restart script as user claude
     exec gosu claude "$0" "$@"
 fi
@@ -93,15 +85,8 @@ npm run ensure:env
 
 # Run prisma db push to ensure schema matches
 npx prisma db push
-
 echo "👤 Seeding default admin user..."
 node scripts/seed-admin.js
 
-# Save current shell PID and the PID of the main process (npm start) to protected list
-# This prevents the cleanup script from killing essential processes
-PROTECTED_PIDS_FILE="/tmp/protected_pids"
-echo "$$" > "$PROTECTED_PIDS_FILE"  # Current shell PID
-
 # Execute the main command
 exec "$@"
-
