@@ -22,6 +22,14 @@ if [ "$(id -u)" = '0' ]; then
         chown -R claude:claude /var/local/Claudable/prisma
     fi
     
+    # Setup cron job for stale process cleanup (runs every 5 minutes)
+    echo "⏰ Setting up cron job for stale process cleanup..."
+    chmod +x /var/local/Claudable/scripts/cleanup-stale-processes.sh
+    echo "*/5 * * * * /var/local/Claudable/scripts/cleanup-stale-processes.sh >> /var/log/cleanup.log 2>&1" | crontab -u claude -
+    
+    # Start cron service
+    service cron start
+    
     # Restart script as user claude
     exec gosu claude "$0" "$@"
 fi
