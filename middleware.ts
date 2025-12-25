@@ -18,29 +18,42 @@ export async function middleware(request: NextRequest) {
   // If hosted at 'app.example.com', then 'proj.app.example.com' would be the preview.
   // Users might need to configure their ROOT_DOMAIN in env.
   
-  const rootDomain = process.env.NEXT_PUBLIC_APP_URL ? new URL(process.env.NEXT_PUBLIC_APP_URL).hostname : 'localhost';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const rootDomain = new URL(appUrl).hostname;
   let projectId: string | null = null;
   
-  if (hostname !== rootDomain && hostname.endsWith(rootDomain)) {
+  // Clean hostname (strip port if present)
+  const cleanHostname = hostname.split(':')[0];
+
+  console.log(`[Middleware] Host: ${hostname}, CleanHost: ${cleanHostname}, RootDomain: ${rootDomain}`);
+  
+  if (cleanHostname !== rootDomain && cleanHostname.endsWith(rootDomain)) {
       // It is a subdomain
-      const subdomainPart = hostname.slice(0, -(rootDomain.length + 1)); // remove .rootDomain
-      if (subdomainPart && subdomainPart !== 'www') {
+      const subdomainPart = cleanHostname.slice(0, -(rootDomain.length + 1)); // remove .rootDomain
+      // Strictly enforce project ID format: starts with 'p-'
+      if (subdomainPart && subdomainPart.startsWith('p-')) {
           projectId = subdomainPart;
+          console.log(`[Middleware] Detected Project ID: ${projectId}`);
       }
-  } else if (hostname.endsWith('.localhost')) {
+  } else if (cleanHostname.endsWith('.localhost')) {
       // Fallback for local dev if NEXT_PUBLIC_APP_URL isn't set perfectly
-       projectId = hostname.split('.')[0];
+       projectId = cleanHostname.split('.')[0];
+       console.log(`[Middleware] Localhost Project ID: ${projectId}`);
   }
 
   if (projectId) {
      // Rewrite to Internal Proxy
-     // We preserve the original path in a search param so the proxy knows where to go
-     // We append the project ID
-     const url = request.nextUrl.clone();
-     url.pathname = '/api/internal-proxy';
+     // We preserve the original path in a search param and header so the proxy knows where to go
+     const url = new URL('/api/internal-proxy', request.url);
      url.searchParams.set('__project_id', projectId);
      url.searchParams.set('__path', pathname);
-     return NextResponse.rewrite(url);
+     
+     console.log(`[Middleware] Rewriting to: ${url.toString()}`);
+     
+     const response = NextResponse.rewrite(url);
+     response.headers.set('x-project-id', projectId);
+     response.headers.set('x-original-path', pathname);
+     return response;
   }
 
 
@@ -75,5 +88,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api/auth|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api/auth).*)'],
 };

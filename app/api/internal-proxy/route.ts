@@ -32,8 +32,12 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 async function handleProxy(request: NextRequest) {
-  // 1. Extract Project ID from query param (injected by middleware)
-  const projectId = request.nextUrl.searchParams.get('__project_id');
+  // 1. Extract Project ID from query param or header (injected by middleware)
+  const url = new URL(request.url);
+  const projectId = 
+    request.nextUrl.searchParams.get('__project_id') || 
+    url.searchParams.get('__project_id') ||
+    request.headers.get('x-project-id');
 
   if (!projectId) {
     return new NextResponse('Project ID not specified in internal routing', { status: 400 });
@@ -62,8 +66,13 @@ async function handleProxy(request: NextRequest) {
   // But we can construct the target path from the original request URL if we didn't lose it?
   // Let's assume the middleware passes the original path as a query param `__path`.
   
-  const originalPath = request.nextUrl.searchParams.get('__path') || '/';
-  const originalQuery = new URLSearchParams(request.nextUrl.searchParams);
+  const originalPath = 
+    request.nextUrl.searchParams.get('__path') || 
+    url.searchParams.get('__path') ||
+    request.headers.get('x-original-path') || 
+    '/';
+    
+  const originalQuery = new URLSearchParams(url.searchParams);
   originalQuery.delete('__project_id');
   originalQuery.delete('__path');
   

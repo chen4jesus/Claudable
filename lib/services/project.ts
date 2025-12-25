@@ -75,6 +75,11 @@ export async function getProjectById(id: string): Promise<Project | null> {
  * Create new project
  */
 export async function createProject(input: CreateProjectInput): Promise<Project> {
+  // Validate project ID format (Enforce p-XXXXXXXX for DNS/Routing stability)
+  if (!input.project_id.startsWith('p-') || input.project_id.length > 20) {
+    throw new Error('Invalid project ID format. Must start with "p-" and be less than 20 characters.');
+  }
+
   // Create project directory
   const projectPath = path.join(PROJECTS_DIR_ABSOLUTE, input.project_id);
   
