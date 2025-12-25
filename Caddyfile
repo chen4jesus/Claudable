@@ -1,4 +1,7 @@
-:80 {
-    # Reverse proxy all traffic to the app container on port 3000
+{
+    email c4j@faithconnect.us
+}
+
+build.faithconnect.us, *.build.faithconnect.us {
     reverse_proxy app:3000
 }

@@ -40,7 +40,11 @@ export async function getSession() {
   const cookieStore = await cookies();
   const session = cookieStore.get('session')?.value;
   if (!session) return null;
-  return await decrypt(session);
+  try {
+    return await decrypt(session);
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function updateSession(request: NextRequest) {

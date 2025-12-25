@@ -1,124 +1,64 @@
-# Production Deployment Guide for Claudable
+# Production Deployment Guide
 
-This guide explains how to deploy Claudable in a production environment.
+This guide explains how to deploy Claudable using Docker Compose, which is the recommended method for production.
+
+## Architecture
+
+- **Caddy (Port 80)**: Reverse proxy and entry point. Automatically routes traffic.
+- **Claudable App (Port 3000)**: The main Next.js application.
+- **Internal Proxy**: The app acts as an internal router for preview subdomains (e.g., `project-id.localhost`), forwarding them to dynamic internal ports.
 
 ## Prerequisites
 
-- Node.js 20+ installed
-- PostgreSQL database (recommended for production) or SQLite (default)
-- A process manager like PM2 (optional but recommended)
+- Docker installed
+- Docker Compose installed
 
-## 1. Environment Configuration
+## Deployment Steps
 
-Create a `.env.production` file in the root directory. You can copy the example below:
+### 1. Configuration
 
-```bash
-# Database Connection (IMPORTANT: Use PostgreSQL for production)
-DATABASE_URL="postgresql://user:password@localhost:5432/claudable_db"
+Ensure you have a `.env` or `.env.local` file with your secrets.
+Crucially, you must set `NEXT_PUBLIC_APP_URL` to the public URL of your Caddy instance (port 80).
 
-# App URL (The public URL of your app)
-NEXT_PUBLIC_APP_URL="https://your-domain.com"
-NEXT_PUBLIC_API_BASE="https://your-domain.com"
-
-# API Keys & Secrets
-# ... (Add other keys from your .env.local)
-
-# Production Optimization
-NODE_ENV="production"
-```
-
-## 2. Build the Application
-
-Build the standalone Next.js application:
+**Example `.env`:**
 
 ```bash
-npm ci              # Install dependencies (clean install)
-npm run build       # Build the application
+# Security
+JWT_SECRET="<generated-secret>"
+ENCRYPTION_KEY="<generated-key>"
+
+# Database
+DATABASE_URL="file:./data/cc.db"
+
+# Public URL (Points to Caddy)
+# For local production simulation:
+NEXT_PUBLIC_APP_URL="http://localhost"
+# For real domain:
+# NEXT_PUBLIC_APP_URL="http://your-domain.com"
 ```
 
-This will create a `.next/standalone` directory optimized for production.
+### 2. Build and Run
 
-## 3. Database Migration
-
-Ensure your production database schema is up to date:
+Run the following command to build the image and start the services:
 
 ```bash
-# For PostgreSQL (ensure DATABASE_URL is set)
-npx prisma migrate deploy
+docker-compose up -d --build
 ```
 
-## 4. Starting the Server
+### 3. Verification
 
-### Option A: Standard Start
+- **Main App**: Visit `http://localhost` (or your domain).
+- **Previews**: Create a project and start it. It will be accessible at `http://{project-id}.localhost`.
 
-```bash
-npm start
-```
+## Data Persistence
 
-### Option B: Standalone Mode (Recommended for Docker/Performance)
+The `docker-compose.yml` mounts the following volumes to persist data:
 
-```bash
-# Copy necessary static files/public folder if needed (Next.js automatically handles most)
-# Run the standalone server
-node .next/standalone/server.js
-```
+- `./data`: SQLite database and configuration.
+- `./data/projects`: User project files.
+- `./prisma/data`: Prisma-related data.
 
-### Option C: Using PM2 (Production Process Manager)
+## Troubleshooting
 
-```bash
-npm install -g pm2
-pm2 start npm --name "claudable" -- start
-# OR for standalone
-pm2 start .next/standalone/server.js --name "claudable"
-```
-
-## 5. Docker Deployment
-
-Since a Dockerfile is not included by default, here is a recommended `Dockerfile` for production:
-
-```dockerfile
-FROM node:20-alpine AS base
-
-FROM base AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-# Disable telemetry during build
-ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build
-
-FROM base AS runner
-WORKDIR /app
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-COPY --from=builder /app/public ./public
-
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-USER nextjs
-
-EXPOSE 3000
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
-
-CMD ["node", "server.js"]
-```
-
-Build and run with Docker:
-
-```bash
-docker build -t claudable .
-docker run -p 3000:3000 -e DATABASE_URL="postgresql://..." claudable
-```
+- **Ports**: Ensure port `80` is free on your host machine.
+- **Logs**: Check logs with `docker-compose logs -f`.
