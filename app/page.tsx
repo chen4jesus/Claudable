@@ -13,6 +13,7 @@ import { Image as ImageIcon, LogOut, User as UserIcon, Shield, Server } from 'lu
 import type { Project as ProjectSummary } from '@/types/project';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
+import { randomUUID } from 'crypto';
 import {
   ACTIVE_CLI_BRAND_COLORS,
   ACTIVE_CLI_MODEL_OPTIONS,
