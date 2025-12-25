@@ -128,6 +128,20 @@ function killProcessTree(pid: number): Promise<void> {
  */
 function killOrphanedPreviewProcesses(): Promise<{ killed: number[]; errors: string[] }> {
   return new Promise((resolve) => {
+    // Patterns that indicate preview-related processes
+    // Be careful not to kill the main Next.js process!
+    const previewPatterns = [
+      /npm run dev/,
+      /npm exec serve/,
+      /npx serve/,
+      /python.*wsgi\.py/,
+      /python.*app\.py/,
+      /flask run/,
+      /next dev/,
+      /vite/,
+      /MainThread/,
+    ];
+
     if (isWindows) {
       // Windows implementation using wmic to get command lines
       exec('wmic process get ProcessId,CommandLine /FORMAT:CSV', (error, stdout) => {
@@ -202,19 +216,7 @@ function killOrphanedPreviewProcesses(): Promise<{ killed: number[]; errors: str
       return;
     }
 
-    // Patterns that indicate preview-related processes
-    // Be careful not to kill the main Next.js process!
-    const previewPatterns = [
-      /npm run dev/,
-      /npm exec serve/,
-      /npx serve/,
-      /python.*wsgi\.py/,
-      /python.*app\.py/,
-      /flask run/,
-      /next dev/,
-      /vite/,
-      /MainThread/,
-    ];
+
 
     // Get our own PID to avoid killing ourselves
     const myPid = process.pid;
@@ -1550,6 +1552,7 @@ class PreviewManager {
     let resolvedUrl: string = `http://${ip}:${effectivePortFinal}`;
 
     // Logic to determine if we should use the public subdomain URL
+    console.log(`[PreviewManager DEBUG] NEXT_PUBLIC_APP_URL: '${process.env.NEXT_PUBLIC_APP_URL}'`);
     if (process.env.NEXT_PUBLIC_APP_URL) {
       try {
         const appUrl = new URL(process.env.NEXT_PUBLIC_APP_URL);

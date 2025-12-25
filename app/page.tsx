@@ -104,9 +104,9 @@ export default function HomePage() {
   // Loading progress tracking
   const [loadingStages, setLoadingStages] = useState({
     auth: false,
-    cli: false,
     projects: false,
-    settings: false
+    settings: false,
+    cli: false,
   });
   const isFullyLoaded = loadingStages.auth && loadingStages.cli && loadingStages.projects && loadingStages.settings;
   const loadingProgress = [loadingStages.auth, loadingStages.cli, loadingStages.projects, loadingStages.settings].filter(Boolean).length;
