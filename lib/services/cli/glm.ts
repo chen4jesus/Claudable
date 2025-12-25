@@ -6,7 +6,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { v4 as uuidv4 } from 'uuid';
 import type { Message } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
 import { streamManager } from '@/lib/services/stream';
@@ -228,7 +228,7 @@ async function persistToolMessage(
 
 function createStreamAccumulator(requestId?: string): StreamAccumulator {
   return {
-    id: requestId ? `glm-stream-${requestId}` : `glm-stream-${randomUUID()}`,
+    id: requestId ? `glm-stream-${requestId}` : `glm-stream-${uuidv4()}`,
     content: '',
     createdAt: new Date().toISOString(),
     isStreaming: false,

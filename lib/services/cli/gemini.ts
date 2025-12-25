@@ -5,7 +5,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { Message } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
@@ -225,7 +225,7 @@ async function persistToolMessage(
 
 function createStreamAccumulator(requestId?: string): StreamAccumulator {
   return {
-    id: requestId ? `gemini-stream-${requestId}` : `gemini-stream-${randomUUID()}`,
+    id: requestId ? `gemini-stream-${requestId}` : `gemini-stream-${uuidv4()}`,
     content: '',
     createdAt: new Date().toISOString(),
     isStreaming: false,

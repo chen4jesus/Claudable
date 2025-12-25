@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import type { Message, MessageMetadata } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
 
@@ -51,7 +51,7 @@ export function createRealtimeMessage(
     createdAt;
 
   return {
-    id: payload.id ?? randomUUID(),
+    id: payload.id ?? uuidv4(),
     projectId: payload.projectId,
     role: payload.role,
     messageType: payload.messageType,

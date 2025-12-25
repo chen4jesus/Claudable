@@ -9,6 +9,7 @@ import ThinkingSection from './ThinkingSection';
 import type { ChatMessage, RealtimeEvent, RealtimeStatus } from '@/types';
 import { toChatMessage, normalizeChatContent } from '@/lib/serializers/client/chat';
 import { toRelativePath } from '@/lib/utils/path';
+import { v4 as uuidv4 } from 'uuid';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
 
@@ -346,8 +347,8 @@ const stripToolPlaceholderLines = (input: string): string => {
 };
 
 const randomMessageId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  if (typeof crypto !== 'undefined' && typeof uuidv4 === 'function') {
+    return uuidv4();
   }
   return `msg_${Math.random().toString(36).slice(2, 11)}`;
 };

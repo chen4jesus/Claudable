@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 import type { Message } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
@@ -299,7 +299,7 @@ function createAssistantStreamer(projectId: string, requestId: string | undefine
     if (!content || content === lastStreamedPayload) {
       return;
     }
-    const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+    const id = assistantMessageId ?? (assistantMessageId = uuidv4());
     const realtime = createRealtimeMessage({
       id,
       projectId,
@@ -343,7 +343,7 @@ function createAssistantStreamer(projectId: string, requestId: string | undefine
       return;
     }
 
-    const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+    const id = assistantMessageId ?? (assistantMessageId = uuidv4());
     lastStreamedPayload = null;
 
     await persistMessage(
@@ -644,7 +644,7 @@ ${instruction.trim()}`;
   }
 
   const maxAttempts = 2;
-  const placeholderMessageId = randomUUID();
+  const placeholderMessageId = uuidv4();
 
   const placeholderMessage = createRealtimeMessage({
     id: placeholderMessageId,

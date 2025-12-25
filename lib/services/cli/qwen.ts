@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import type { Message } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
 import { getProjectById } from '@/lib/services/project';
@@ -229,7 +229,7 @@ async function executeQwen(
   publishStatus(projectId, 'running', requestId);
 
   const env = buildQwenEnv();
-  const streamingMessageId = requestId ? `qwen-stream-${requestId}` : `qwen-stream-${randomUUID()}`;
+  const streamingMessageId = requestId ? `qwen-stream-${requestId}` : `qwen-stream-${uuidv4()}`;
   const streamingCreatedAt = new Date().toISOString();
 
   const child = spawn(QWEN_EXECUTABLE, args, {

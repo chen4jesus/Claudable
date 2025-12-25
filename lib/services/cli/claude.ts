@@ -13,7 +13,7 @@ import { createMessage } from '../message';
 import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId, getClaudeModelDisplayName } from '@/lib/constants/claudeModels';
 import path from 'path';
 import fs from 'fs/promises';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';  
 import {
   markUserRequestAsRunning,
   markUserRequestAsCompleted,
@@ -766,7 +766,7 @@ export async function executeClaude(
         switch (event.type) {
           case 'message_start': {
             const newState: AssistantStreamState = {
-              messageId: randomUUID(),
+              messageId: uuidv4(),
               content: '',
               hasSentUpdate: false,
               finalized: false,
@@ -811,7 +811,7 @@ export async function executeClaude(
 
             if (!streamState || streamState.finalized) {
               streamState = {
-                messageId: randomUUID(),
+                messageId: uuidv4(),
                 content: '',
                 hasSentUpdate: false,
                 finalized: false,

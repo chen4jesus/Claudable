@@ -6,7 +6,7 @@ import { spawn } from 'child_process';
 import readline from 'node:readline';
 import path from 'path';
 import fs from 'fs/promises';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import type { Message } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
 import { streamManager } from '@/lib/services/stream';
@@ -327,7 +327,7 @@ async function persistMessage(
   } catch (error) {
     console.error('[CodexService] Failed to persist message. Falling back to realtime emit:', error);
     const fallback = createRealtimeMessage({
-      id: payload.id ?? randomUUID(),
+      id: payload.id ?? uuidv4(),
       projectId,
       role: payload.role,
       messageType: payload.messageType,
@@ -608,7 +608,7 @@ async function executeCodex(
     if (!force && combined === lastStreamedAssistantPayload) {
       return;
     }
-    const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+    const id = assistantMessageId ?? (assistantMessageId = uuidv4());
 
     // Enhanced duplicate prevention
     if (streamedMessageIds.has(id) && !force) {
@@ -651,7 +651,7 @@ async function executeCodex(
       return;
     }
 
-    const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+    const id = assistantMessageId ?? (assistantMessageId = uuidv4());
     lastStreamedAssistantPayload = null;
 
     await persistMessage(
@@ -672,7 +672,7 @@ async function executeCodex(
   };
 
   const emitCommandStart = async (item: Record<string, unknown>) => {
-    const id = pickFirstString(item.id) ?? randomUUID();
+    const id = pickFirstString(item.id) ?? uuidv4();
     const command = pickFirstString(item.command);
     activeCommands.set(id, { command });
     const label = command ? `Running: ${command}` : 'Running command';
