@@ -200,6 +200,9 @@ async function ensureEnvironment(options = {}) {
   if (!hasEnvKey(envContents, 'ENCRYPTION_KEY')) {
     envDefaults.ENCRYPTION_KEY = `"${crypto.randomBytes(32).toString('hex')}"`;
   }
+  if (!hasEnvKey(envContents, 'JWT_SECRET')) {
+    envDefaults.JWT_SECRET = `"${crypto.randomBytes(32).toString('hex')}"`;
+  }
 
   const portStartCandidates = [
     parsePortValue(process.env.PREVIEW_PORT_START),

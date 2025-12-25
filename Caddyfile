@@ -1,0 +1,4 @@
+:80 {
+    # Reverse proxy all traffic to the app container on port 3000
+    reverse_proxy app:3000
+}
