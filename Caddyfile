@@ -7,24 +7,15 @@
     }
 }
 
+# The main application
 build.faithconnect.us {
     reverse_proxy app:3000
 }
 
-:443 {
+# The dynamic preview subdomains
+*.build.faithconnect.us {
     tls {
         on_demand
     }
-
-    # Match preview subdomains
-    @preview host_regexp preview ^[a-z0-9-]+\.build\.faithconnect\.us$
-    
-    handle @preview {
-        reverse_proxy app:3000
-    }
-
-    # Fallback for unknown domains
-    handle {
-        respond "Not Found" 404
-    }
+    reverse_proxy app:3000
 }
