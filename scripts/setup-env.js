@@ -262,7 +262,7 @@ async function ensureEnvironment(options = {}) {
   }
 
   const port = await findAvailablePort(webRangeStart, webRangeEnd, preferredPort);
-  const url = `http://localhost:${port}`;
+  const url = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${port}`;
 
   if (port !== preferredPort) {
     console.log(
