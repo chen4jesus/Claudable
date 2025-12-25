@@ -1548,6 +1548,21 @@ class PreviewManager {
     
     // Update URL with effective port/url
     let resolvedUrl: string = `http://${ip}:${effectivePortFinal}`;
+
+    // Logic to determine if we should use the public subdomain URL
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      try {
+        const appUrl = new URL(process.env.NEXT_PUBLIC_APP_URL);
+        // If we are in a production-like environment (not localhost), use subdomains
+        if (appUrl.hostname !== 'localhost' && appUrl.hostname !== '127.0.0.1') {
+          // protocol is usually https: in production
+          resolvedUrl = `${appUrl.protocol}//${projectId}.${appUrl.hostname}`;
+        }
+      } catch (e) {
+        // Fallback to internal IP if parsing fails
+      }
+    }
+
     // For Flask, always use localhost URL; don't use project's NEXT_PUBLIC_APP_URL
     if (!isFlaskProject && typeof overrides.url === 'string' && overrides.url.trim().length > 0) {
       resolvedUrl = overrides.url.trim();

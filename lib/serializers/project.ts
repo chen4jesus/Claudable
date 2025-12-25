@@ -7,22 +7,7 @@ export function serializeProject(project: ProjectEntity & { group?: { name: stri
     name: project.name,
     description: project.description ?? null,
     status: project.status,
-    previewUrl: (() => {
-      // Logic to determine if we should show the public subdomain URL or the internal one
-      if (project.previewPort && process.env.NEXT_PUBLIC_APP_URL) {
-        try {
-          const appUrl = new URL(process.env.NEXT_PUBLIC_APP_URL);
-          // If we are in a production-like environment (not localhost), use subdomains
-          if (appUrl.hostname !== 'localhost' && appUrl.hostname !== '127.0.0.1') {
-            // protocol is usually https: in production
-            return `${appUrl.protocol}//${project.id}.${appUrl.hostname}`;
-          }
-        } catch (e) {
-          // Fallback to stored URL if parsing fails
-        }
-      }
-      return project.previewUrl ?? null;
-    })(),
+    previewUrl: project.previewUrl ?? null,
     previewPort: project.previewPort ?? null,
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),

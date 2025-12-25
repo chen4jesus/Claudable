@@ -50,14 +50,12 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # 11. sudo useradd -m claude
 # 12. sudo passwd claude
-# Give claude near-root permissions for system tasks within the container
+# Accept CLAUDE_PW as a build argument (default to 'claude' if not provided, but should be overridden)
+ARG CLAUDE_PW=claude
 RUN useradd -m claude && \
-    echo "claude:claude" | chpasswd && \
-    # Add claude to sudo and root groups for elevated access
-    usermod -aG sudo,root claude && \
-    # Grant passwordless sudo for ALL commands (near-root permissions)
-    echo "claude ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/claude && \
-    chmod 0440 /etc/sudoers.d/claude
+    echo "claude:${CLAUDE_PW}" | chpasswd && \
+    # Add claude to sudo group to allow admin tasks with password
+    usermod -aG sudo claude
 
 # 13. sudo chown -R claude:claude /var/local/Claudable
 # Also give claude ownership of common system task directories
