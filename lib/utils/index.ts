@@ -2,7 +2,8 @@
  * Generate a unique project ID
  */
 export function generateProjectId(): string {
-  return `project-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  // Enforce latest shortened pattern: p-XXXXXXXX
+  return `p-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**

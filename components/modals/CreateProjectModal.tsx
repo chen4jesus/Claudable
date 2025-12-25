@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionP } from '@/lib/motion';
 import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { PROJECT_TYPE_OPTIONS, type ProjectType } from '@/lib/constants/projectTypes';
+import { generateProjectId, validateProjectName } from '@/lib/utils';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
 
@@ -117,13 +118,6 @@ const CLI_OPTIONS: CLIOption[] = [
   },
 ];
 
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
 
 interface CreateProjectModalProps {
   open: boolean;
@@ -531,7 +525,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     console.debug('Creating project with:', { finalCLI, finalModel, useDefaultSettings, globalSettings });
     
     const name = projectName.trim() || 'New Project';
-    const projectUuid = generateUUID();
+    const projectUuid = generateProjectId();
     
     // 1. Show loading spinner immediately
     setLoading(false); // Turn off button loading

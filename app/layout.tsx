@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: 'Build Faithfully',
   description: 'Build Faithfully',
   icons: {
-    icon: '/Faithfully_blue.png',
+    icon: '/favicon.png',
   },
 }
 

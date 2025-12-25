@@ -25,7 +25,7 @@ export async function middleware(request: NextRequest) {
   // Clean hostname (strip port if present)
   const cleanHostname = hostname.split(':')[0];
 
-  console.log(`[Middleware] Host: ${hostname}, CleanHost: ${cleanHostname}, RootDomain: ${rootDomain}`);
+  // console.log(`[Middleware] Host: ${hostname}, CleanHost: ${cleanHostname}, RootDomain: ${rootDomain}`);
   
   if (cleanHostname !== rootDomain && cleanHostname.endsWith(rootDomain)) {
       // It is a subdomain
