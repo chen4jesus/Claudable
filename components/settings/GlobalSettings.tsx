@@ -805,15 +805,33 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                       height={100}
                       className="relative z-10 w-full h-full object-contain rounded-2xl shadow-lg"
                     />
+                     {/* Shine effect overlay */}
+                    <div 
+                      className="absolute inset-0 z-20 overflow-hidden rounded-2xl pointer-events-none"
+                      style={{
+                        background: 'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.6) 50%, transparent 70%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'shine 2s ease-in-out infinite'
+                      }}
+                    />
+                    {/* Glow effect behind logo */}
+                    <div className="absolute inset-0 -z-10 blur-xl opacity-40 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full scale-110" />
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 ">FaithConnect</h3>
-                  <p className="text-gray-600 mt-2 font-medium">Version 1.0.0</p>
+                  <h3 className="text-2xl font-bold text-gray-900 ">Build Faithfully</h3>
+                  <p className="text-gray-600 mt-2 font-medium">Version 0.1.0</p>
                 </div>
+                
+                <style jsx>{`
+                  @keyframes shine {
+                    0% { background-position: 200% 0; }
+                    100% { background-position: -200% 0; }
+                  }
+                `}</style>
                 
                 <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 space-y-4">
                   <div className="text-center">
                     <p className="text-base text-gray-700 leading-relaxed max-w-2xl mx-auto">
-                      FaithConnect is an AI-powered development platform that integrates with technology, process and most importantly - people who love God and want to serve Him.
+                      Build Faithfully is an AI-powered development platform that integrates with technology, process and most importantly - people who love God and want to serve Him.
                     </p>
                   </div>
                   
