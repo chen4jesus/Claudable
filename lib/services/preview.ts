@@ -1559,7 +1559,8 @@ class PreviewManager {
         // If we are in a production-like environment (not localhost), use subdomains
         if (appUrl.hostname !== 'localhost' && appUrl.hostname !== '127.0.0.1') {
           // protocol is usually https: in production
-          resolvedUrl = `${appUrl.protocol}//${projectId}.${appUrl.hostname}`;
+          // Encode the port into the subdomain: p{port}-{projectId}.{hostname}
+          resolvedUrl = `${appUrl.protocol}//p${effectivePortFinal}-${projectId}.${appUrl.hostname}`;
         }
       } catch (e) {
         // Fallback to internal IP if parsing fails

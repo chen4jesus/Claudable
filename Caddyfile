@@ -14,6 +14,11 @@ build.faithconnect.us {
 }
 
 # 2. Project Previews (Wildcard)
+# Matches p{port}-{projectId}.build.faithconnect.us or {projectId}.build.faithconnect.us
+# The port is extracted from the p{port}- prefix if present.
+@preview {
+    header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
+}
 *.build.faithconnect.us {
     tls {
         on_demand
@@ -21,5 +26,14 @@ build.faithconnect.us {
     log {
         output file /data/preview_access.log
     }
-    reverse_proxy app:3000
+
+    # Handle prefixed ports
+    handle @preview {
+        reverse_proxy app:{re.host.1}
+    }
+
+    # Fallback to default app port
+    handle {
+        reverse_proxy app:3000
+    }
 }
