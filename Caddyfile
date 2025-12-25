@@ -14,12 +14,13 @@ build.faithconnect.us {
 }
 
 # 2. Project Previews (Wildcard)
-# Matches p{port}-{projectId}.build.faithconnect.us or {projectId}.build.faithconnect.us
-# The port is extracted from the p{port}- prefix if present.
-@preview {
-    header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
-}
 *.build.faithconnect.us {
+    # Matches p{port}-{projectId}.build.faithconnect.us
+    # The port is extracted from the p{port}- prefix.
+    @preview {
+        header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
+    }
+
     tls {
         on_demand
     }
