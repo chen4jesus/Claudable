@@ -6,6 +6,7 @@ services:
       context: .
       args:
         - CLAUDE_PW=${CLAUDE_PW:-claude}
+        - NEXT_PUBLIC_APP_URL=https://build.faithconnect.us/
     restart: unless-stopped
     environment:
       - PORT=3000

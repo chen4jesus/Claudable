@@ -42,6 +42,10 @@ RUN npx prisma generate
 # git clone ... (Replaced with COPY . .)
 COPY . .
 
+# Pass NEXT_PUBLIC_APP_URL at build time so it gets baked into client-side bundles
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+
 # 9. npm run build
 RUN npm run build
 
