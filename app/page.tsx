@@ -534,8 +534,8 @@ export default function HomePage() {
     
     setIsCreatingProject(true);
     
-    // Generate a unique project ID
-    const projectId = `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generate a shorter, DNS-friendly unique project ID (e.g. p-a1b2c3d4)
+    const projectId = `p-${Math.random().toString(36).substring(2, 10)}`;
     
     try {
       // Smart project type detection based on prompt keywords
