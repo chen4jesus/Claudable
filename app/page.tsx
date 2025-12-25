@@ -13,7 +13,7 @@ import { Image as ImageIcon, LogOut, User as UserIcon, Shield, Server } from 'lu
 import type { Project as ProjectSummary } from '@/types/project';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import {
   ACTIVE_CLI_BRAND_COLORS,
   ACTIVE_CLI_MODEL_OPTIONS,
@@ -456,7 +456,7 @@ export default function HomePage() {
       const imagesToAdd = filesArray
         .filter(file => file.type.startsWith('image/'))
         .map(file => ({
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           name: file.name,
           url: URL.createObjectURL(file),
           path: '',
