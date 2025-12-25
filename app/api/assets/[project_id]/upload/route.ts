@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { getProjectById } from '@/lib/services/project';
 
 interface RouteContext {
@@ -41,7 +41,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const originalName = file.name || 'image.png';
     const extension = path.extname(originalName) || '.png';
-    const uniqueName = `${randomUUID()}${extension}`;
+    const uniqueName = `${uuidv4()}${extension}`;
     const absolutePath = path.join(projectAssetsPath, uniqueName);
     const resolvedAbsolutePath = path.resolve(absolutePath);
 

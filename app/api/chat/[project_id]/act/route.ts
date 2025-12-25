@@ -23,7 +23,7 @@ import { generateProjectId } from '@/lib/utils';
 import { previewManager } from '@/lib/services/preview';
 import path from 'path';
 import fs from 'fs/promises';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { serializeMessage } from '@/lib/serializers/chat';
 import {
   upsertUserRequest,
@@ -133,8 +133,8 @@ async function materializeBase64Image(
 ): Promise<{ absolutePath: string; filename: string; publicUrl: string | null }> {
   const buffer = Buffer.from(base64, 'base64');
   const extension = inferExtensionFromMime(mimeType);
-  const safeName = nameHint && nameHint.trim() ? nameHint.trim() : `image-${randomUUID()}`;
-  const filename = `${safeName.replace(/[^a-zA-Z0-9-_]/g, '-') || 'image'}-${randomUUID()}${extension}`;
+  const safeName = nameHint && nameHint.trim() ? nameHint.trim() : `image-${uuidv4()}`;
+  const filename = `${safeName.replace(/[^a-zA-Z0-9-_]/g, '-') || 'image'}-${uuidv4()}${extension}`;
   const assetsDir = resolveAssetsPath(projectId);
   await fs.mkdir(assetsDir, { recursive: true });
   const absolutePath = path.join(assetsDir, filename);

@@ -354,10 +354,8 @@ export default function ChatPage() {
   const [previewInitializationMessage, setPreviewInitializationMessage] = useState('Starting development server...');
   const [cliStatuses, setCliStatuses] = useState<Record<string, CliStatusSnapshot>>({});
   const [conversationId, setConversationId] = useState<string>(() => {
-    if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
-      return window.crypto.randomUUID();
-    }
-    return '';
+    // Generate UUID on client side (or hydrate from server if provided)
+    return uuidv4();
   });
   const [preferredCli, setPreferredCli] = useState<ActiveCliId>(DEFAULT_ACTIVE_CLI);
   const [selectedModel, setSelectedModel] = useState<string>(getDefaultModelForCli(DEFAULT_ACTIVE_CLI));
@@ -447,7 +445,7 @@ export default function ChatPage() {
     setAgentWorkComplete(false);
     localStorage.setItem(`project_${projectId}_taskComplete`, 'false');
 
-    const requestId = crypto.randomUUID();
+    const requestId = uuidv4();
 
     try {
       setIsRunning(true);
