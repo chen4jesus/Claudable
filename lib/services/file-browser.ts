@@ -341,3 +341,43 @@ export async function moveProjectFile(
     throw new FileBrowserError('Failed to move or rename file/directory', 500);
   }
 }
+export async function uploadProjectFile(
+  projectId: string,
+  filePath: string,
+  fileName: string,
+  buffer: Buffer
+): Promise<{ path: string }> {
+  const project = await getProjectById(projectId);
+  if (!project) {
+    throw new FileBrowserError('Project not found', 404);
+  }
+
+  const repoRoot = resolveRepoRoot(project);
+  const targetDir = normalizeRelativePath(filePath);
+  const absoluteDir = await resolveSafePath(repoRoot, targetDir === '.' ? '.' : targetDir);
+
+  // Ensure target exists and is a directory
+  try {
+    const stats = await fs.stat(absoluteDir);
+    if (!stats.isDirectory()) {
+      throw new FileBrowserError('Target is not a directory', 400);
+    }
+  } catch (error) {
+    // If it doesn't exist, create it
+    await fs.mkdir(absoluteDir, { recursive: true });
+  }
+
+  const absoluteFilePath = path.join(absoluteDir, fileName);
+  const relativeFilePath = joinRelativePath(targetDir, fileName);
+  await resolveSafePath(repoRoot, relativeFilePath); // Security check
+
+  try {
+    await fs.writeFile(absoluteFilePath, buffer);
+    return {
+      path: relativeFilePath.replace(/\\/g, '/'),
+    };
+  } catch (error) {
+    console.error('[FileBrowser] Failed to upload file:', error);
+    throw new FileBrowserError('Failed to upload file', 500);
+  }
+}
