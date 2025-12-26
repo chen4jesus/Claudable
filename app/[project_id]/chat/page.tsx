@@ -5,7 +5,7 @@ import { MotionDiv, MotionH3, MotionP, MotionButton } from '@/lib/motion';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight, FaRedo } from 'react-icons/fa';
-import { ExternalLink, Trash2, Pencil, LogOut } from 'lucide-react';
+import { ExternalLink, Trash2, Pencil, LogOut, Upload } from 'lucide-react';
 import { SiTypescript, SiGo, SiRuby, SiSvelte, SiJson, SiYaml, SiCplusplus } from 'react-icons/si';
 import { VscJson } from 'react-icons/vsc';
 import ChatLog from '@/components/chat/ChatLog';
@@ -88,6 +88,7 @@ interface TreeViewProps {
   onLoadFolder: (path: string) => Promise<void>;
   onDelete?: (path: string, type: 'file' | 'dir') => void;
   onRename?: (path: string, type: 'file' | 'dir') => void;
+  onUpload?: (path: string, type: 'file' | 'dir') => void;
   onMove?: (source: string, target: string) => void;
   level: number;
   parentPath?: string;
@@ -96,7 +97,7 @@ interface TreeViewProps {
   setDragOverPath: (path: string | null) => void;
 }
 
-function TreeView({ entries, selectedFile, expandedFolders, folderContents, onToggleFolder, onSelectFile, onLoadFolder, onDelete, onRename, onMove, level, parentPath = '', getFileIcon, dragOverPath, setDragOverPath }: TreeViewProps) {
+function TreeView({ entries, selectedFile, expandedFolders, folderContents, onToggleFolder, onSelectFile, onLoadFolder, onDelete, onRename, onUpload, onMove, level, parentPath = '', getFileIcon, dragOverPath, setDragOverPath }: TreeViewProps) {
   // Ensure entries is an array
   if (!entries || !Array.isArray(entries)) {
     return null;
@@ -179,6 +180,7 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
                     await onLoadFolder(fullPath);
                   }
                   onToggleFolder(fullPath);
+                  (onLoadFolder as any).setCurrentPath?.(fullPath);
                 } else {
                   onSelectFile(fullPath);
                 }
@@ -217,6 +219,16 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
               {/* Action Buttons (Visible on hover) */}
               <div className="hidden group-hover:flex items-center gap-1.5 ml-1">
                 <button
+                  title="Upload to here"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpload?.(fullPath, entry.type);
+                  }}
+                  className="p-1 text-gray-400 hover:text-green-600 hover:bg-white rounded transition-colors"
+                >
+                  <Upload size={12} />
+                </button>
+                <button
                   title="Rename"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -251,6 +263,7 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
                 onLoadFolder={onLoadFolder}
                 onDelete={onDelete}
                 onRename={onRename}
+                onUpload={onUpload}
                 onMove={onMove}
                 level={level + 1}
                 parentPath={fullPath}
@@ -368,7 +381,50 @@ export default function ChatPage() {
   const highlightRef = useRef<HTMLPreElement>(null);
   const lineNumberRef = useRef<HTMLDivElement>(null);
   const editedContentRef = useRef<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadTarget, setUploadTarget] = useState<string>('.');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+
+  const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', uploadTarget === '.' ? '' : uploadTarget);
+
+    try {
+      const r = await fetch(`${API_BASE}/api/projects/${projectId}/files/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (r.ok) {
+        // Refresh the tree at the target location or root
+        loadTree('.'); 
+        // Clear input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        const error = await r.json();
+        alert(`Upload failed: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Failed to upload file');
+    }
+  };
+
+  const handleTriggerUpload = useCallback((path: string, type: 'file' | 'dir') => {
+    // If it's a directory, upload to it. 
+    // If it's a file, upload to its parent.
+    const targetPath = type === 'dir' ? path : (path.split('/').slice(0, -1).join('/') || '.');
+    setUploadTarget(targetPath);
+    
+    // Tiny delay to ensure state is set before file dialog opens
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 10);
+  }, []);
   const [username, setUsername] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -3200,6 +3256,10 @@ const persistProjectPreferences = useCallback(
               >
                 {/* Left Sidebar - File Explorer (VS Code style) */}
                 <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
+                  {/* Explorer Header */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Explorer</span>
+                  </div>
                   {/* File Tree */}
                   <div 
                     className={`flex-1 overflow-y-auto bg-gray-50 custom-scrollbar transition-all ${
@@ -3229,6 +3289,12 @@ const persistProjectPreferences = useCallback(
                       }
                     }}
                   >
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
                     {!tree || tree.length === 0 ? (
                       <div className="px-3 py-8 text-center text-[11px] text-gray-600 select-none">
                         No files found
@@ -3241,9 +3307,10 @@ const persistProjectPreferences = useCallback(
                         folderContents={folderContents}
                         onToggleFolder={toggleFolder}
                         onSelectFile={openFile}
-                        onLoadFolder={handleLoadFolder}
+                        onLoadFolder={Object.assign((p: string) => handleLoadFolder(p), { setCurrentPath })}
                         onDelete={handleDeletePath}
                         onRename={handleRenamePath}
+                        onUpload={handleTriggerUpload}
                         onMove={handleMovePath}
                         level={0}
                         parentPath=""
