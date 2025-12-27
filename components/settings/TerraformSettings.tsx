@@ -178,8 +178,10 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
       setDeploymentStatus('success');
       fetchStatus();
     } catch (error: any) {
-      setLogs(prev => prev + '\nError: ' + error.message);
+      const errMsg = error.message || 'Deployment failed';
+      setLogs(prev => prev + '\nError: ' + errMsg);
       setDeploymentStatus('error');
+      showStatus('error', 'Deployment Failed', errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -243,8 +245,9 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
       fetchStatus();
       showStatus('success', 'Success', 'Infrastructure destroyed successfully.');
     } catch (error: any) {
-      setLogs("Error destroying: " + error.message);
-      showStatus('error', 'Error', 'Failed to destroy infrastructure: ' + error.message);
+      const errMsg = error.message || 'Destruction failed';
+      setLogs("Error destroying: " + errMsg);
+      showStatus('error', 'Error', 'Failed to destroy infrastructure: ' + errMsg);
     } finally {
       setIsLoading(false);
       setIsVerifyingPassword(false);

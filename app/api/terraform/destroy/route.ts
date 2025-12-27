@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { destroyProject } from '@/lib/services/terraform';
-import { getServiceToken } from '@/lib/services/tokens';
+import { getPlainServiceToken } from '@/lib/services/tokens';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,12 +11,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get Linode token
-    const token = await getServiceToken('linode');
+    const token = await getPlainServiceToken('linode');
     if (!token) {
         return NextResponse.json({ error: 'Linode token not found' }, { status: 400 });
     }
 
-    const result = await destroyProject(projectId, token.token);
+    const result = await destroyProject(projectId, token);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });
