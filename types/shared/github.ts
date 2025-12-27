@@ -18,6 +18,8 @@ export interface GitHubRepositoryInfo {
   id: number;
   name: string;
   full_name: string;
+  html_url: string;
+  clone_url: string;
   owner: {
     login: string;
     id: number | null;

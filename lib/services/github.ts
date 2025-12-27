@@ -152,6 +152,8 @@ export async function getGithubRepositoryDetails(owner: string, repo: string): P
       id: data.id,
       name: data.name,
       full_name: data.full_name,
+      html_url: data.html_url,
+      clone_url: data.clone_url,
       owner: {
         login: data.owner?.login ?? owner,
         id: typeof data.owner?.id === 'number' ? data.owner.id : null,
@@ -182,7 +184,33 @@ export async function connectProjectToGitHub(projectId: string, options: CreateR
   }
 
   const user = await getGithubUser();
-  const repo = await createRepository(options);
+  
+  let repo: any = null;
+
+  // Check if project was cloned from a GitHub repo and try to reuse it
+  if (project.gitRepoUrl && project.gitRepoUrl.includes('github.com')) {
+    try {
+      console.debug(`[GitHubService] Project has existing gitRepoUrl: ${project.gitRepoUrl}. Checking if we can reuse it...`);
+      // Extract owner and repo from URL
+      const urlParts = project.gitRepoUrl.replace(/\.git$/, '').split('/');
+      if (urlParts.length >= 2) {
+        const repoName = urlParts[urlParts.length - 1];
+        const ownerName = urlParts[urlParts.length - 2];
+        
+        const details = await getGithubRepositoryDetails(ownerName, repoName);
+        console.debug(`[GitHubService] Found existing repo: ${details.full_name}. Reconnecting...`);
+        repo = details;
+      }
+    } catch (error) {
+      console.warn(`[GitHubService] Could not reuse existing repo from ${project.gitRepoUrl}:`, error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+
+  // If no existing repo found or reuse failed, create a new one
+  if (!repo) {
+    console.debug(`[GitHubService] Creating new repository: ${options.repoName}`);
+    repo = await createRepository(options);
+  }
 
   const repoPath = await ensureProjectRepository(projectId, project.repoPath);
   ensureGitRepository(repoPath);
