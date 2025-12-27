@@ -8,10 +8,10 @@
 }
 
 # 1. Main Application
-{$DOMAIN} {
+build.lumalearn.com {
     tls {
         on_demand
-    }   
+    }
     log {
         output file /data/access.log
     }
@@ -19,11 +19,11 @@
 }
 
 # 2. Project Previews (Wildcard)
-*.{$DOMAIN} {
-    # Matches p{port}-{projectId}.{$DOMAIN}
+*.build.lumalearn.com {
+    # Matches p{port}-{projectId}.build.lumalearn.com
     # The port is extracted from the p{port}- prefix.
     @preview {
-        header_regexp host Host ^p(\d+)-.+\.{$DOMAIN}$
+        header_regexp host Host ^p(\d+)-.+\.build\.lumalearn\.com$
     }
 
     tls {
