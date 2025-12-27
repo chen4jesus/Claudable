@@ -39,11 +39,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API] Deploy Config: Domain=${config.domainName}, DomainEmail=${config.domainEmail}, CFEmail=${config.cloudflareEmail}`);
 
-    // Trigger deployment
-    // TODO: Ideally this should suffer from a background job queue, but for now we await (or fire and forget if long running)
-    // Since terraform apply can take time, we might want to return "Processing" and let frontend poll.
-    // However, the service awaits execution.
-    
+    // Trigger deployment in background
     const result = await deployProject(config);
 
     if (!result.success) {

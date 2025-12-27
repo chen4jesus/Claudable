@@ -90,7 +90,13 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
           const data = await res.json();
           setInfraStatus(data);
           
-          if (data.status === 'success' && data.resourceInfo?.ip) {
+          if (data.status === 'running') {
+            setDeploymentStatus('deploying');
+          } else if (deploymentStatus === 'deploying' && data.status !== 'running') {
+            setDeploymentStatus('idle');
+          }
+
+          if (data.resourceInfo?.ip) {
             handlePing(data.resourceInfo.ip);
           }
       } catch (err) {
@@ -98,7 +104,49 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
       } finally {
           setIsRefreshing(false);
       }
+  }, [projectId, deploymentStatus]);
+
+  const fetchLogs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/logs/terraform`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.logs !== undefined) {
+          setLogs(data.logs);
+          
+          // Check if process finished
+          if (data.logs.includes('Deployment Complete') || data.logs.includes('FATAL ERROR') || data.logs.includes('Destruction Complete') || data.logs.includes('Destruction Failed')) {
+            setDeploymentStatus(prev => {
+              if (data.logs.includes('FATAL ERROR') || data.logs.includes('Destruction Failed')) return 'error';
+              if (data.logs.includes('Deployment Complete')) return 'success';
+              return 'idle';
+            });
+            return true; // Finished
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch logs", err);
+    }
+    return false; // Not finished
   }, [projectId]);
+
+  // Polling logs during deployment/destruction
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (deploymentStatus === 'deploying') {
+      interval = setInterval(async () => {
+        const finished = await fetchLogs();
+        if (finished) {
+          clearInterval(interval);
+          fetchStatus(); // Refresh status when done
+        }
+      }, 2000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [deploymentStatus, fetchLogs, fetchStatus]);
 
   // Load/Save persisted settings
   useEffect(() => {
@@ -123,7 +171,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
     };
     loadSettings();
     fetchStatus();
-  }, [projectId, fetchStatus]);
+    fetchLogs(); // Initial log load
+  }, [projectId, fetchStatus, fetchLogs]);
 
   const saveSettings = async (newRegion: string, newType: string, newDomain: string, newDomainEmail: string, newCfToken: string, newCfEmail: string) => {
     try {
@@ -176,9 +225,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
         throw new Error(data.error || 'Deployment failed');
       }
 
-      setLogs(data.logs || 'Deployment successful!');
-      setDeploymentStatus('success');
-      fetchStatus();
+      setLogs(prev => prev + '\n' + (data.logs || 'Action initiated...'));
+      // Status will stay 'deploying' and trigger polling
     } catch (error: any) {
       const errMsg = error.message || 'Deployment failed';
       setLogs(prev => prev + '\nError: ' + errMsg);
@@ -232,6 +280,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
       // Password verified, proceed with destruction
       setShowPasswordModal(false);
       setIsLoading(true);
+      setDeploymentStatus('deploying'); // Reuse 'deploying' for polling logs
       setLogs('Password verified. Starting destruction...');
       
       const response = await fetch('/api/terraform/destroy', {
@@ -240,15 +289,14 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
         body: JSON.stringify({ projectId })
       });
       
-      if (!response.ok) throw new Error("Destroy failed");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Destroy failed");
       
-      setLogs("Infrastructure destroyed successfully.");
-      setDeploymentStatus('idle');
-      fetchStatus();
-      showStatus('success', 'Success', 'Infrastructure destroyed successfully.');
+      setLogs(prev => prev + '\n' + (data.message || "Destruction initiated..."));
     } catch (error: any) {
       const errMsg = error.message || 'Destruction failed';
       setLogs("Error destroying: " + errMsg);
+      setDeploymentStatus('error');
       showStatus('error', 'Error', 'Failed to destroy infrastructure: ' + errMsg);
     } finally {
       setIsLoading(false);
@@ -270,8 +318,12 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
         </div>
         <button
           onClick={fetchStatus}
-          disabled={isRefreshing || isLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] bg-white text-slate-500 border border-slate-200 rounded-md hover:bg-slate-50 font-black transition-all shadow-sm"
+          disabled={isRefreshing || isLoading || deploymentStatus === 'deploying'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] border rounded-md font-black transition-all shadow-sm ${
+            isRefreshing || isLoading || deploymentStatus === 'deploying'
+              ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+              : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+          }`}
         >
           <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
           SYNC
@@ -357,13 +409,31 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
 
             {/* Actions Footer */}
             <div className="px-4 py-2 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between">
-              <button onClick={fetchStatus} className="text-[10px] font-black text-slate-400 hover:text-indigo-500 transition-all flex items-center gap-1.5 uppercase">
-                <RefreshCw className="w-2.5 h-2.5" />
+              <button 
+                onClick={fetchStatus} 
+                disabled={isRefreshing || isLoading || deploymentStatus === 'deploying'}
+                className={`text-[10px] font-black transition-all flex items-center gap-1.5 uppercase ${
+                  isRefreshing || isLoading || deploymentStatus === 'deploying'
+                    ? 'text-slate-200 cursor-not-allowed'
+                    : 'text-slate-400 hover:text-indigo-500'
+                }`}
+              >
+                <RefreshCw className={`w-2.5 h-2.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 Refresh
               </button>
               <div className="flex gap-2">
                 <button onClick={() => window.open(`https://manager.linode.com`, '_blank')} className="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase">Console</button>
-                <button onClick={handleDestroy} className="text-[10px] font-black text-rose-500 hover:text-rose-600 uppercase">Destroy</button>
+                <button 
+                  onClick={handleDestroy} 
+                  disabled={isLoading || deploymentStatus === 'deploying'} 
+                  className={`text-[10px] font-black uppercase transition-all ${
+                    isLoading || deploymentStatus === 'deploying' 
+                      ? 'text-slate-300 cursor-not-allowed' 
+                      : 'text-rose-500 hover:text-rose-600'
+                  }`}
+                >
+                  Destroy
+                </button>
               </div>
             </div>
           </div>
@@ -380,7 +450,12 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                     setIsLoading(false);
                     showStatus('success', 'Saved', 'Configuration updated.');
                   }}
-                  className="px-3 py-1 bg-slate-900 text-white rounded-md font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all"
+                  disabled={isLoading || deploymentStatus === 'deploying'}
+                  className={`px-3 py-1 rounded-md font-black text-[10px] uppercase tracking-widest transition-all ${
+                    isLoading || deploymentStatus === 'deploying'
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-900 text-white hover:bg-slate-800'
+                  }`}
                 >
                   Apply
                 </button>
@@ -394,8 +469,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       type="text"
                       value={domainName}
                       onChange={(e) => setDomainName(e.target.value)}
-                      placeholder="try.lumalearn.com"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                      disabled={isLoading || deploymentStatus === 'deploying'}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div className="space-y-1">
@@ -404,8 +479,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       type="text"
                       value={domainEmail}
                       onChange={(e) => setDomainEmail(e.target.value)}
-                      placeholder="ops@yourdomain.com"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                      disabled={isLoading || deploymentStatus === 'deploying'}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -417,8 +492,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       type="password"
                       value={cloudflareToken}
                       onChange={(e) => setCloudflareToken(e.target.value)}
-                      placeholder="••••••••••••"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                      disabled={isLoading || deploymentStatus === 'deploying'}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div className="space-y-1">
@@ -427,8 +502,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       type="text"
                       value={cloudflareEmail}
                       onChange={(e) => setCloudflareEmail(e.target.value)}
-                      placeholder="admin@cloudflare.com"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                      disabled={isLoading || deploymentStatus === 'deploying'}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -486,7 +561,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         saveSettings(val, type, domainName, domainEmail, cloudflareToken, cloudflareEmail);
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold appearance-none cursor-pointer shadow-sm capitalize"
-                      disabled={isLoading}
+                      disabled={isLoading || deploymentStatus === 'deploying'}
                     >
                       <option value="us-east">Atlantic East (Newark)</option>
                       <option value="us-west">Pacific West (Fremont)</option>
@@ -509,7 +584,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         saveSettings(region, val, domainName, domainEmail, cloudflareToken, cloudflareEmail);
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold appearance-none cursor-pointer shadow-sm"
-                      disabled={isLoading}
+                      disabled={isLoading || deploymentStatus === 'deploying'}
                     >
                       <option value="g6-nanode-1">Nanode (1vCPU / 1GB)</option>
                       <option value="g6-standard-1">Standard (1vCPU / 2GB)</option>
@@ -536,7 +611,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         onChange={(e) => setDomainName(e.target.value)}
                         placeholder="try.domain.com"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                        disabled={isLoading}
+                        disabled={isLoading || deploymentStatus === 'deploying'}
                       />
                     </div>
                     <div className="space-y-1">
@@ -547,7 +622,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         onChange={(e) => setDomainEmail(e.target.value)}
                         placeholder="ops@domain.com"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                        disabled={isLoading}
+                        disabled={isLoading || deploymentStatus === 'deploying'}
                       />
                     </div>
                   </div>
@@ -562,7 +637,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                           onChange={(e) => setCloudflareToken(e.target.value)}
                           placeholder="••••••••••••"
                           className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                          disabled={isLoading}
+                            disabled={isLoading || deploymentStatus === 'deploying'}
                         />
                       </div>
                     </div>
@@ -574,7 +649,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         onChange={(e) => setCloudflareEmail(e.target.value)}
                         placeholder="admin@cloudflare.com"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                        disabled={isLoading}
+                        disabled={isLoading || deploymentStatus === 'deploying'}
                       />
                     </div>
                   </div>
@@ -592,9 +667,9 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
 
              <button
               onClick={handleDeploy}
-              disabled={isLoading}
+              disabled={isLoading || deploymentStatus === 'deploying'}
               className={`group relative overflow-hidden flex items-center justify-center gap-2 w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all shadow-md active:scale-[0.98] ${
-                isLoading 
+                isLoading || deploymentStatus === 'deploying'
                    ? 'bg-indigo-300 cursor-not-allowed shadow-none' 
                    : 'bg-indigo-600 hover:bg-slate-900 shadow-indigo-600/10'
               }`}

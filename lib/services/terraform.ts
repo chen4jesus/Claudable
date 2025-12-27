@@ -62,15 +62,28 @@ export interface TerraformState {
   };
 }
 
+// Simple in-memory state for tracking background operations
+const activeOperations = new Map<string, 'deploying' | 'destroying'>();
+
 export async function getProjectStatus(projectId: string): Promise<TerraformState> {
+    const activeOp = activeOperations.get(projectId);
+    
     try {
         const dir = await ensureTfDir(projectId);
         const stateFile = path.join(dir, 'terraform.tfstate');
         
+        let infrastructureFound = true;
         try {
             await fs.access(stateFile);
         } catch {
-             return { status: 'not_found', message: 'No infrastructure found.' };
+             infrastructureFound = false;
+        }
+
+        if (!infrastructureFound) {
+            if (activeOp) {
+                return { status: 'running', message: activeOp === 'deploying' ? 'Deployment in progress...' : 'Destruction in progress...' };
+            }
+            return { status: 'not_found', message: 'No infrastructure found.' };
         }
 
         const content = await fs.readFile(stateFile, 'utf-8');
@@ -85,8 +98,8 @@ export async function getProjectStatus(projectId: string): Promise<TerraformStat
 
         if (instance) {
             return {
-                status: 'success',
-                message: 'Infrastructure active',
+                status: activeOp ? 'running' : 'success',
+                message: activeOp ? (activeOp === 'deploying' ? 'Updating infrastructure...' : 'Destroying infrastructure...') : 'Infrastructure active',
                 resourceInfo: {
                     id: instance.id,
                     ip: instance.ip_address,
@@ -98,7 +111,10 @@ export async function getProjectStatus(projectId: string): Promise<TerraformStat
             };
         }
         
-        return { status: 'success', message: 'State file exists but no instance found.' };
+        return { 
+            status: activeOp ? 'running' : 'success', 
+            message: activeOp ? 'Processing...' : 'State file exists but no instance found.' 
+        };
 
     } catch (error: any) {
         return { status: 'error', message: error.message };
@@ -115,6 +131,8 @@ async function ensureTfDir(projectId: string) {
 
 export async function checkTerraformInstalled(): Promise<boolean> {
   try {
+    // Check if binary exists and is executable
+    await resolveTfBinary();
     await execAsync(`${TF_BINARY} --version`);
     return true;
   } catch (error) {
@@ -168,10 +186,15 @@ terraform {
 }
 
 provider "linode" {
-  token = "${config.token}"
+  token = "\${var.linode_token}"
 }
 
 provider "random" {}
+
+variable "linode_token" {
+  type = string
+  sensitive = true
+}
 
 variable "domain_name" {
   type    = string
@@ -203,6 +226,7 @@ resource "linode_instance" "web" {
     user     = "root"
     password = random_string.root_pass.result
     host     = self.ip_address
+    timeout  = "5m"
   }
 }
 
@@ -218,6 +242,7 @@ resource "null_resource" "app_deployment" {
     user     = "root"
     password = random_string.root_pass.result
     host     = linode_instance.web.ip_address
+    timeout  = "5m"
   }
 
   provisioner "remote-exec" {
@@ -294,15 +319,88 @@ async function runCommandWithLog(command: string, cwd: string, logFile: string):
   });
 }
 
+/**
+ * Internal function to handle the actual deployment steps
+ */
+async function performDeployment(config: TerraformConfig, projectPort: number, dir: string, logFile: string) {
+    const projectId = config.projectId;
+    activeOperations.set(projectId, 'deploying');
+    
+    try {
+        await fs.writeFile(logFile, `[${new Date().toISOString()}] Starting background deployment...\n`);
+        
+        // 1. Optimize init - check if .terraform exists
+        const dotTfDir = path.join(dir, '.terraform');
+        let needsInit = true;
+        try {
+            await fs.access(dotTfDir);
+            needsInit = false;
+        } catch {}
+
+        if (needsInit) {
+            await runCommandWithLog(`${TF_BINARY} init`, dir, logFile);
+        } else {
+            await fs.appendFile(logFile, "Skipping init, .terraform directory already exists.\n");
+        }
+        
+        const currentStatus = await getProjectStatus(projectId);
+        const isUpdate = currentStatus.status === 'success' || (currentStatus.status === 'running' && currentStatus.resourceInfo);
+
+        let command = `${TF_BINARY} apply -auto-approve -var="linode_token=${config.token}"`;
+        if (isUpdate) {
+            await fs.appendFile(logFile, `\nInfrastructure exists, performing targeted app deployment...\n`);
+            command += ' -target="null_resource.app_deployment"';
+        }
+
+        const stdout = await runCommandWithLog(command, dir, logFile);
+        
+        if (config.domainName && config.cloudflareToken) {
+            try {
+                const status = await getProjectStatus(projectId);
+                const ip = status.resourceInfo?.ip;
+                if (ip) {
+                    await fs.appendFile(logFile, `\nUpdate Cloudflare DNS: ${config.domainName} -> ${ip}\n`);
+                    await updateCloudflareDNS(config.domainName, ip, config.cloudflareToken, config.cloudflareEmail);
+                    await fs.appendFile(logFile, "DNS Update Successful\n");
+                }
+            } catch (dnsError: any) {
+                 await fs.appendFile(logFile, `\nWARNING: Cloudflare DNS Update Failed: ${dnsError.message}\n`);
+            }
+        }
+
+        if (config.domainName) {
+            await fs.appendFile(logFile, `\nVerifying SSL for https://${config.domainName} (this may take several minutes)...\n`);
+            // We don't block the status for this, but we log it.
+            waitForSSL(config.domainName, logFile).then(success => {
+                if (success) {
+                    fs.appendFile(logFile, `\n[${new Date().toISOString()}] SSL Verification Successful!\n`);
+                } else {
+                    fs.appendFile(logFile, `\n[${new Date().toISOString()}] WARNING: SSL Verification timed out or failed.\n`);
+                }
+            });
+        }
+
+        await fs.appendFile(logFile, `\n[${new Date().toISOString()}] Deployment Complete.\n`);
+    } catch (error: any) {
+        await fs.appendFile(logFile, `\n[${new Date().toISOString()}] FATAL ERROR: ${error.message}\n`);
+        if (error.stdout) {
+            await fs.appendFile(logFile, `\nSTDOUT/STDERR:\n${error.stdout}\n`);
+        }
+    } finally {
+        activeOperations.delete(projectId);
+    }
+}
+
 export async function deployProject(
   config: TerraformConfig
 ): Promise<{ success: boolean; logs?: string; error?: string }> {
   // If ensureExisting is true, verify infrastructure is already up and use deployed values
   if (config.ensureExisting) {
     const status = await getProjectStatus(config.projectId);
-    if (status.status !== 'success' || !status.resourceInfo) {
+    if ((status.status !== 'success' && status.status !== 'running') || !status.resourceInfo) {
       throw new Error("No active infrastructure found. Please set up a server in Settings before publishing.");
     }
+    // We can proceed even if status is 'running' if resourceInfo exists (it means instance is up but something is updating)
     config.region = status.resourceInfo.region;
     config.type = status.resourceInfo.type;
 
@@ -369,54 +467,14 @@ export async function deployProject(
   const logFile = path.join(dir, 'deploy.log');
 
   await fs.writeFile(tfFile, generateLinqodeConfig(config, projectPort));
-  await fs.writeFile(logFile, 'Starting deployment...\n');
+  
+  // Trigger background deployment
+  performDeployment(config, projectPort, dir, logFile);
 
-  try {
-    await runCommandWithLog(`${TF_BINARY} init`, dir, logFile);
-    
-    const currentStatus = await getProjectStatus(config.projectId);
-    const isUpdate = currentStatus.status === 'success';
-
-    let command = `${TF_BINARY} apply -auto-approve`;
-    if (isUpdate) {
-        await fs.appendFile(logFile, `\nInfrastructure exists, performing targeted app deployment...\n`);
-        command += ' -target="null_resource.app_deployment"';
-    }
-
-    const stdout = await runCommandWithLog(command, dir, logFile);
-    
-    if (config.domainName && config.cloudflareToken) {
-        try {
-            const status = await getProjectStatus(config.projectId);
-            const ip = status.resourceInfo?.ip;
-            if (ip) {
-                await fs.appendFile(logFile, `\nUpdate Cloudflare DNS: ${config.domainName} -> ${ip}\n`);
-                await updateCloudflareDNS(config.domainName, ip, config.cloudflareToken, config.cloudflareEmail);
-                await fs.appendFile(logFile, "DNS Update Successful\n");
-            }
-        } catch (dnsError: any) {
-             const errMsg = `WARNING: Cloudflare DNS Update Failed: ${dnsError.message}`;
-             await fs.appendFile(logFile, `\n${errMsg}\n`);
-             return { success: true, logs: stdout + `\n\n${errMsg}` };
-        }
-    }
-
-    if (config.domainName) {
-        await fs.appendFile(logFile, `\nVerifying SSL for https://${config.domainName}...\n`);
-        const success = await waitForSSL(config.domainName, logFile);
-        if (success) {
-            await fs.appendFile(logFile, "SSL Verification Successful! Your site is secure.\n");
-        } else {
-             await fs.appendFile(logFile, "WARNING: SSL Verification timed out.\n");
-        }
-    }
-
-    await fs.appendFile(logFile, '\nDeployment Complete.\n');
-    return { success: true, logs: stdout };
-  } catch (error: any) {
-    await fs.appendFile(logFile, `\nFATAL ERROR: ${error.message}\n`);
-    return { success: false, error: error.message, logs: error.stdout };
-  }
+  return { 
+    success: true, 
+    logs: 'Deployment initiated in background. You can follow the logs in the console.' 
+  };
 }
 
 async function updateCloudflareDNS(domain: string, ip: string, token: string, email?: string) {
@@ -479,19 +537,33 @@ async function updateCloudflareDNS(domain: string, ip: string, token: string, em
 
 export async function destroyProject(projectId: string, token: string) {
     const dir = await ensureTfDir(projectId);
-     const config: TerraformConfig = {
+    const config: TerraformConfig = {
         projectId,
         region: 'us-east',
         type: 'g6-nanode-1',
         token
       };
-      await fs.writeFile(path.join(dir, 'main.tf'), generateLinqodeConfig(config));
-    try {
-        await execAsync(`${TF_BINARY} destroy -auto-approve`, { cwd: dir });
-        return { success: true };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
+    
+    const logFile = path.join(dir, 'deploy.log');
+    await fs.writeFile(path.join(dir, 'main.tf'), generateLinqodeConfig(config));
+    
+    // Background destruction
+    const doDestroy = async () => {
+        activeOperations.set(projectId, 'destroying');
+        try {
+            await fs.writeFile(logFile, `[${new Date().toISOString()}] Starting background destruction...\n`);
+            await runCommandWithLog(`${TF_BINARY} destroy -auto-approve -var="linode_token=${token}"`, dir, logFile);
+            await fs.appendFile(logFile, `\n[${new Date().toISOString()}] Destruction Complete.\n`);
+        } catch (error: any) {
+            await fs.appendFile(logFile, `\n[${new Date().toISOString()}] Destruction Failed: ${error.message}\n`);
+        } finally {
+            activeOperations.delete(projectId);
+        }
+    };
+    
+    doDestroy();
+    
+    return { success: true, message: "Destruction initiated in background." };
 }
 
 async function waitForSSL(domain: string, logFile: string): Promise<boolean> {
