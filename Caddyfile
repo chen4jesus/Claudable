@@ -8,7 +8,10 @@
 }
 
 # 1. Main Application
-build.faithconnect.us {
+{$DOMAIN} {
+    tls {
+        on_demand
+    }   
     log {
         output file /data/access.log
     }
@@ -16,11 +19,11 @@ build.faithconnect.us {
 }
 
 # 2. Project Previews (Wildcard)
-*.build.faithconnect.us {
-    # Matches p{port}-{projectId}.build.faithconnect.us
+*.{$DOMAIN} {
+    # Matches p{port}-{projectId}.{$DOMAIN}
     # The port is extracted from the p{port}- prefix.
     @preview {
-        header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
+        header_regexp host Host ^p(\d+)-.+\.{$DOMAIN}$
     }
 
     tls {
