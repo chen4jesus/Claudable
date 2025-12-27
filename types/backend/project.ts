@@ -17,6 +17,7 @@ export interface Project {
   previewUrl?: string | null;
   previewPort?: number | null;
   repoPath?: string;
+  gitRepoUrl?: string | null;
   initialPrompt?: string;
   templateType?: TemplateType;
   activeClaudeSessionId?: string;
