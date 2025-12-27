@@ -9,9 +9,6 @@
 
 # 1. Main Application
 build.lumalearn.com {
-    tls {
-        on_demand
-    }
     log {
         output file /data/access.log
     }
