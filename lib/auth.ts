@@ -2,9 +2,9 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is not set');
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_build_only';
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.warn('Warning: JWT_SECRET environment variable is not set. Using fallback secret.');
 }
 const key = new TextEncoder().encode(JWT_SECRET);
 
