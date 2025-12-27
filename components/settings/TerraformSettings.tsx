@@ -461,25 +461,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
             </div>
           </div>
 
-          {/* Log Viewer - Condensed */}
-          <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800">
-            <div className="bg-slate-800/50 px-4 py-2 flex items-center justify-between border-b border-slate-700/50">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin text-emerald-500" />
-                SYSTEM LOGS
-              </p>
-            </div>
-            <div ref={logContainerRef} className="p-4 h-[250px] overflow-y-auto font-mono text-[11px] leading-tight space-y-0.5 bg-slate-950/50">
-              {logs ? logs.split('\n').map((line, i) => (
-                <div key={i} className="flex gap-3 text-slate-400 hover:text-slate-300 transition-colors">
-                  <span className="text-slate-800 select-none w-4 text-right shrink-0">{(i + 1)}</span>
-                  <span className={line.includes('Error') ? 'text-rose-400' : line.includes('Success') ? 'text-emerald-400' : ''}>{line}</span>
-                </div>
-              )) : (
-                <div className="h-full flex items-center justify-center text-slate-800 text-[10px] font-black uppercase tracking-widest opacity-30">No Logs</div>
-              )}
-            </div>
-          </div>
+
         </div>
       ) : (
         /* Empty State / Create Infrastructure - Ultra Low Profile */
@@ -558,7 +540,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">SSL Email</label>
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">SSL Admin Email</label>
                       <input
                         type="text"
                         value={domainEmail}
@@ -585,7 +567,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Operator Email</label>
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Cloudflare Email</label>
                       <input
                         type="text"
                         value={cloudflareEmail}
@@ -631,6 +613,56 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
               )}
             </button>
            </div>
+        </div>
+      )}
+
+      {/* Log Viewer - Visible during and after deployment */}
+      {(logs || isLoading || hasInfra) && (
+        <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-top-2 duration-500">
+          <div className="bg-slate-800/50 px-4 py-2 flex items-center justify-between border-b border-slate-700/50">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <RefreshCw className={`w-2.5 h-2.5 ${isLoading || isRefreshing ? 'animate-spin' : ''} text-emerald-500`} />
+              SYSTEM LOGS
+            </p>
+            <div className="flex items-center gap-3">
+               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-900/30 border border-slate-700/30">
+                 <div className={`w-1 h-1 rounded-full ${
+                   deploymentStatus === 'deploying' ? 'bg-indigo-400 animate-pulse' :
+                   deploymentStatus === 'success' ? 'bg-emerald-400' :
+                   deploymentStatus === 'error' ? 'bg-rose-400' :
+                   infraStatus?.status === 'success' ? 'bg-emerald-400' :
+                   infraStatus?.status === 'error' ? 'bg-rose-400' :
+                   'bg-slate-600'
+                 }`} />
+                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                   {deploymentStatus !== 'idle' ? deploymentStatus : (infraStatus?.status || 'idle')}
+                 </span>
+               </div>
+               
+               {isOnline !== null && (
+                 <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-all duration-300 ${
+                   isOnline ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'
+                 }`}>
+                    <div className={`w-1 h-1 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.3)]' : 'bg-rose-500'}`} />
+                    <span className={`text-[8px] font-black uppercase tracking-tighter ${isOnline ? 'text-emerald-500' : 'text-rose-500'}`}>
+                     {isOnline ? 'Verified' : 'Unreachable'}
+                    </span>
+                 </div>
+               )}
+            </div>
+          </div>
+          <div ref={logContainerRef} className="p-4 h-[250px] overflow-y-auto font-mono text-[11px] leading-tight space-y-0.5 bg-slate-950/50">
+            {logs ? logs.split('\n').map((line, i) => (
+              <div key={i} className="flex gap-3 text-slate-400 hover:text-slate-300 transition-colors">
+                <span className="text-slate-800 select-none w-4 text-right shrink-0">{(i + 1)}</span>
+                <span className={line.includes('Error') ? 'text-rose-400' : line.includes('Success') ? 'text-emerald-400' : ''}>{line}</span>
+              </div>
+            )) : (
+              <div className="h-full flex items-center justify-center text-slate-800 text-[10px] font-black uppercase tracking-widest opacity-30">
+                {isLoading ? 'Establishing connection...' : 'No Logs Available'}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
