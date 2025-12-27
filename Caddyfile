@@ -8,7 +8,7 @@
 }
 
 # 1. Main Application
-build.lumalearn.com {
+build.faithconnect.us {
     log {
         output file /data/access.log
     }
@@ -16,11 +16,11 @@ build.lumalearn.com {
 }
 
 # 2. Project Previews (Wildcard)
-*.build.lumalearn.com {
-    # Matches p{port}-{projectId}.build.lumalearn.com
+*.build.faithconnect.us {
+    # Matches p{port}-{projectId}.build.faithconnect.us
     # The port is extracted from the p{port}- prefix.
     @preview {
-        header_regexp host Host ^p(\d+)-.+\.build\.lumalearn\.com$
+        header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
     }
 
     tls {
