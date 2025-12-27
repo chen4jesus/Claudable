@@ -1,27 +1,41 @@
 {
-    # Cloudflare terminates TLS
-    auto_https off
+    email c4j@faithconnect.us
+    # Force lets encrypt as the primary issuer
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+    on_demand_tls {
+        ask http://app:3000/api/caddy/ask
+    }
 }
 
-# Main app + all preview subdomains
-build.faithconnect.us, *.build.faithconnect.us {
-
+# 1. Main Application
+build.faithconnect.us {
     log {
         output file /data/access.log
     }
+    reverse_proxy app:3000
+}
 
-    # Match preview hostnames like:
-    # p3001-projectId.build.faithconnect.us
+# 2. Project Previews (Wildcard)
+*.build.faithconnect.us {
+    # Matches p{port}-{projectId}.build.faithconnect.us
+    # The port is extracted from the p{port}- prefix.
     @preview {
         header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
     }
 
-    # Route preview traffic to dynamic port
+    tls {
+        on_demand
+    }
+    log {
+        output file /data/preview_access.log
+    }
+
+    # Handle prefixed ports
     handle @preview {
         reverse_proxy app:{re.host.1}
     }
 
-    # Default app
+    # Fallback to default app port
     handle {
         reverse_proxy app:3000
     }
