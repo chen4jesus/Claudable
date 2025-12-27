@@ -22,20 +22,20 @@ export function SettingsModal({ isOpen, onClose, title, icon, children, classNam
       
       <div className={`absolute inset-y-0 right-0 ${className || 'max-w-3xl'} w-full bg-white shadow-2xl flex flex-col transition-all duration-300 ease-in-out`}>
         {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 ">
+        <div className="px-6 py-3 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 ">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {icon && (
-                <div className="p-2 bg-white rounded-lg shadow-sm text-gray-600 ">
+                <div className="p-1.5 bg-white rounded-lg shadow-sm text-gray-600 scale-90">
                   {icon}
                 </div>
               )}
               <div>
-                <h2 className="text-xl font-semibold text-gray-900 ">
+                <h2 className="text-lg font-bold text-slate-800 leading-tight">
                   {title}
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Configure your project settings
+                <p className="text-[10px] text-slate-400 font-medium tracking-tight">
+                  {title === 'Project Settings' ? 'Configure project parameters' : 'System preferences'}
                 </p>
               </div>
             </div>

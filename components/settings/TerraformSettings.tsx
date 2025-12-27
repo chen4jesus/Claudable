@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, Trash2, RefreshCw, ExternalLink, Globe, Eye, EyeOff } from 'lucide-react';
 import { StatusModal, type ModalType } from '../modals/StatusModal';
 
@@ -28,6 +28,14 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
   const [logs, setLogs] = useState<string>('');
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
   const [infraStatus, setInfraStatus] = useState<TerraformStatus | null>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   // Status Modal State
   const [statusModal, setStatusModal] = useState<{
@@ -73,7 +81,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
     }
   };
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
       setIsRefreshing(true);
       try {
           const res = await fetch(`/api/terraform/status?projectId=${projectId}`);
@@ -88,7 +96,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
       } finally {
           setIsRefreshing(false);
       }
-  };
+  }, [projectId]);
 
   // Load/Save persisted settings
   useEffect(() => {
@@ -113,7 +121,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
     };
     loadSettings();
     fetchStatus();
-  }, [projectId]);
+  }, [projectId, fetchStatus]);
 
   const saveSettings = async (newRegion: string, newType: string, newDomain: string, newDomainEmail: string, newCfToken: string, newCfEmail: string) => {
     try {
@@ -247,344 +255,242 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
   const hasInfra = infraStatus?.status === 'success' && infraStatus.resourceInfo;
 
   return (
-    <div className="max-w-full px-4 sm:px-10 mx-auto space-y-12 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Header Section - More Spacing */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-10">
-        <div className="space-y-2">
-          <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">Infrastructure</h2>
-          <p className="text-slate-500 text-lg font-medium">Provision and manage server resources with real-time monitoring.</p>
+    <div className="max-w-full px-4 mx-auto space-y-4 pb-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      {/* Header Section - Extreme Density */}
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mt-1">
+        <div className="flex items-center gap-2">
+          <Globe className="w-4 h-4 text-indigo-500" />
+          <h2 className="text-lg font-black text-slate-800 tracking-tight">Infrastructure</h2>
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hidden sm:inline-block border-l border-slate-100 pl-2">Status & Controls</span>
         </div>
         <button
           onClick={fetchStatus}
           disabled={isRefreshing || isLoading}
-          className="group flex items-center gap-3 px-6 py-3 text-sm bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 font-bold transition-all shadow-sm active:scale-95"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] bg-white text-slate-500 border border-slate-200 rounded-md hover:bg-slate-50 font-black transition-all shadow-sm"
         >
-          <RefreshCw className={`w-5 h-5 text-slate-400 group-hover:text-slate-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh Status
+          <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+          SYNC
         </button>
       </div>
 
       {/* Main Dashboard Area - Single Column for Width */}
       {hasInfra ? (
-        <div className="space-y-12">
-          {/* Status & Connection Card - Full Width */}
-          <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl shadow-slate-200/60 overflow-hidden">
+        <div className="space-y-4">
+          {/* Status & Connection Card - Extreme Density */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             {/* Card Header */}
-            <div className="bg-slate-50/80 px-10 py-6 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
-                  <Globe className="w-6 h-6 text-emerald-500" />
+            <div className="bg-slate-50/30 px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-white rounded border border-slate-100 shadow-sm">
+                  <Globe className="w-3.5 h-3.5 text-emerald-500" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-800 tracking-tight">Active Instance</h3>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Bare Metal Cloud</p>
-                </div>
+                <h3 className="text-sm font-black text-slate-700 tracking-tight uppercase">Active Cluster</h3>
               </div>
-              <div className="flex items-center gap-3">
-                <span className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border transition-all ${
+              <div className="flex items-center gap-2">
+                <span className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
                   isOnline === true ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100' :
                   isOnline === false ? 'bg-rose-50 text-rose-600 border-rose-100 shadow-sm shadow-rose-100' :
                   'bg-slate-50 text-slate-500 border-slate-100'
                 }`}>
-                  {isPinging ? <RefreshCw className="w-4 h-4 animate-spin" /> : 
-                   <div className={`w-2.5 h-2.5 rounded-full ${isOnline === true ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />}
-                  {isOnline === true ? 'Online & Healthy' : isOnline === false ? 'Connection Failed' : 'Scanning Status...'}
+                  {isPinging ? <RefreshCw className="w-3 h-3 animate-spin" /> : 
+                   <div className={`w-2 h-2 rounded-full ${isOnline === true ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />}
+                  {isOnline === true ? 'Online' : isOnline === false ? 'Offline' : 'Scanning...'}
                 </span>
               </div>
             </div>
 
-            {/* Content Grid - More Space */}
-            <div className="p-10 grid grid-cols-1 lg:grid-cols-2 gap-16">
+            {/* Content Grid - Extreme Density */}
+            <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Connection Specs */}
-              <div className="space-y-8">
-                {/* Fixed Overlap - Switched to Flex for better flow */}
-                <div className="flex flex-col sm:flex-row items-start gap-12">
-                  <div className="space-y-2 min-w-0">
-                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block px-1">IP Address</label>
-                    <div className="flex items-center gap-3 group">
-                      <code className="text-md font-black text-slate-700 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 shadow-inner truncate">
-                        {infraStatus.resourceInfo?.ip}
-                      </code>
-                      <button 
-                        onClick={() => handlePing(infraStatus.resourceInfo!.ip)}
-                        disabled={isPinging}
-                        className="p-2.5 bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-slate-100 hover:border-indigo-100 shadow-sm active:scale-90 shrink-0"
-                        title="Manual Ping"
-                      >
-                        <RefreshCw className={`w-5 h-5 ${isPinging ? 'animate-spin' : ''}`} />
-                      </button>
-                    </div>
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="space-y-1 min-w-0">
+                    <label className="text-[9px] font-black uppercase text-slate-300 tracking-widest block">IP Address</label>
+                    <code className="text-sm font-black text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 truncate block">
+                      {infraStatus.resourceInfo?.ip}
+                    </code>
                   </div>
-
-                  <div className="space-y-2 shrink-0">
-                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block px-1">Region</label>
-                    <p className="text-md font-bold text-slate-700 flex items-center gap-3 mt-1.5 px-1 bg-white py-1">
-                       <span className="capitalize whitespace-nowrap">{infraStatus.resourceInfo?.region.replace('-', ' ')}</span>
-                       <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded-lg uppercase tracking-wider">{infraStatus.resourceInfo?.region}</span>
-                    </p>
+                  <div className="space-y-1 shrink-0">
+                    <label className="text-[9px] font-black uppercase text-slate-300 tracking-widest block">Region</label>
+                    <span className="text-xs font-bold text-slate-600 bg-white border border-slate-100 px-2 py-1 rounded-lg uppercase tracking-tight">
+                      {infraStatus.resourceInfo?.region}
+                    </span>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block px-1">Live Endpoint</label>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-300 tracking-wider block">Endpoint</label>
                   {domainName ? (
-                    <a 
-                      href={`https://${domainName}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="group/link inline-flex items-center gap-3 text-indigo-600 hover:text-indigo-700 transition-all bg-indigo-50/50 hover:bg-indigo-50 px-4 py-2.5 rounded-2xl border border-indigo-100/50"
-                    >
-                      <span className="text-2xl font-black tracking-tight">{domainName}</span>
-                      <div className="p-2 bg-white rounded-xl shadow-sm border border-indigo-100 group-hover/link:shadow-md transition-all">
-                        <ExternalLink className="w-5 h-5 opacity-70 group-hover/link:opacity-100 group-hover/link:scale-110 transition-all" />
-                      </div>
+                    <a href={`https://${domainName}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-black text-sm tracking-tight">
+                      {domainName}
+                      <ExternalLink className="w-3 h-3 opacity-50" />
                     </a>
                   ) : (
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 inline-block">
-                      <span className="text-slate-400 text-sm font-bold italic tracking-tight">Domain configuration pending...</span>
-                    </div>
+                    <span className="text-slate-400 text-[10px] font-bold italic">Unconfigured</span>
                   )}
                 </div>
               </div>
 
-              {/* Security Specs */}
-              <div className="bg-slate-50/30 rounded-3xl p-8 border border-slate-100 space-y-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-3 px-1">Access Credentials</label>
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-2">
-                       <span className="text-xs font-bold text-slate-500 ml-1">SSH Authentication (Root)</span>
-                       <div className="flex items-center gap-3">
-                        <div className="flex-1 flex items-center gap-3 bg-slate-900 rounded-[1.25rem] px-6 py-4 group/pass border border-slate-800 shadow-2xl">
-                          <span className="font-mono text-base font-bold text-indigo-300 flex-1 truncate tracking-wider">
-                            {showPassword ? infraStatus.resourceInfo?.rootPass : '••••••••••••••••••••'}
-                          </span>
-                          <button
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
-                          >
-                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                        <div className="px-3 py-1.5 rounded-xl text-[10px] font-black bg-white text-emerald-600 border border-emerald-100 shadow-sm uppercase tracking-tighter">RSA Encrypted</div>
-                      </div>
-                    </div>
-                  </div>
+              {/* Server Stats */}
+              <div className="bg-slate-50/50 rounded-lg p-3 grid grid-cols-3 gap-3 border border-slate-100">
+                <div className="space-y-0.5">
+                  <span className="text-[8px] font-black text-slate-400 uppercase leading-none">CPU</span>
+                  <div className="text-sm font-bold text-slate-700">1 Core</div>
                 </div>
-                
-                <div className="pt-4 flex items-center gap-4 text-slate-400 px-2">
-                   <div className="h-px bg-slate-200 flex-1" />
-                   <span className="text-[10px] uppercase font-black tracking-[0.2em] opacity-50">Cloud Operator Only</span>
-                   <div className="h-px bg-slate-200 flex-1" />
+                <div className="space-y-0.5 border-x border-slate-100 px-3">
+                  <span className="text-[8px] font-black text-slate-400 uppercase leading-none">RAM</span>
+                  <div className="text-sm font-bold text-slate-700">2 GB</div>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[8px] font-black text-slate-400 uppercase leading-none">TYPE</span>
+                  <div className="text-[10px] font-black text-indigo-500 uppercase truncate">
+                    {infraStatus.resourceInfo?.type.split('-')[1]}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Critical Operations Footer */}
-            <div className="px-10 py-6 bg-rose-50/20 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                 <div className="p-2 bg-white rounded-xl border border-rose-100 shadow-sm">
-                   <Trash2 className="w-5 h-5 text-rose-500" />
-                 </div>
-                 <p className="text-xs text-rose-800/60 font-bold max-w-sm leading-relaxed">
-                   Destruction is immediate and permanent. Ensure all persistent data or database volumes are backed up.
-                 </p>
-              </div>
-              <button 
-                onClick={handleDestroy}
-                disabled={isLoading}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 text-xs font-black uppercase tracking-widest text-rose-600 border-2 border-rose-500/20 bg-white hover:bg-rose-600 hover:text-white hover:border-rose-600 rounded-2xl transition-all shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                Destroy Infrastructure
+            {/* Actions Footer */}
+            <div className="px-4 py-2 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between">
+              <button onClick={fetchStatus} className="text-[10px] font-black text-slate-400 hover:text-indigo-500 transition-all flex items-center gap-1.5 uppercase">
+                <RefreshCw className="w-2.5 h-2.5" />
+                Refresh
               </button>
+              <div className="flex gap-2">
+                <button onClick={() => window.open(`https://manager.linode.com`, '_blank')} className="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase">Console</button>
+                <button onClick={handleDestroy} className="text-[10px] font-black text-rose-500 hover:text-rose-600 uppercase">Destroy</button>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            {/* Configuration Form - Now wider 8-cols */}
-            <div className="lg:col-span-12 xl:col-span-8 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-10 space-y-10">
-              <div className="border-b border-slate-100 pb-8">
-                <h3 className="text-2xl font-black text-slate-800 tracking-tight">Orchestration Parameters</h3>
-                <p className="text-slate-500 text-base font-medium mt-1">Configure domain resolution and SSL automation for upcoming deployments.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                {/* Domain Group */}
-                <div className="space-y-6">
-                  <div className="flex items-center gap-3 px-1">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center border border-indigo-100 shadow-sm">
-                      <Globe className="w-4 h-4 text-indigo-500" />
-                    </div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Routing Settings</h4>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-600 ml-1">Canonical Domain</label>
-                    <input
-                      type="text"
-                      value={domainName}
-                      onChange={(e) => setDomainName(e.target.value)}
-                      placeholder="try.lumalearn.com"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-700 text-lg focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                      disabled={isLoading}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-600 ml-1">Let's Encrypt Email</label>
-                    <input
-                      type="text"
-                      value={domainEmail}
-                      onChange={(e) => setDomainEmail(e.target.value)}
-                      placeholder="ops@yourdomain.com"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-700 text-lg focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                      disabled={isLoading}
-                    />
-                  </div>
-                </div>
-
-                {/* Cloudflare Group */}
-                <div className="space-y-6">
-                  <div className="flex items-center gap-3 px-1">
-                    <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center border border-orange-100 shadow-sm">
-                       <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                    </div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Cloudflare Auth</h4>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-600 ml-1">API Execution Token</label>
-                    <div className="relative group/input">
-                      <input
-                        type="password"
-                        value={cloudflareToken}
-                        onChange={(e) => setCloudflareToken(e.target.value)}
-                        placeholder="••••••••••••••••••••••••••••"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-5 pr-12 py-4 text-slate-700 text-lg focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                        disabled={isLoading}
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within/input:text-indigo-400 transition-colors pointer-events-none">
-                        <Eye className="w-5 h-5" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-600 ml-1">Global Operator Email</label>
-                    <input
-                      type="text"
-                      value={cloudflareEmail}
-                      onChange={(e) => setCloudflareEmail(e.target.value)}
-                      placeholder="admin@cloudflare.com"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-700 text-lg focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
-                      disabled={isLoading}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row items-center gap-8 pt-8 border-t border-slate-100">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Configuration Form - Condensed */}
+            <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <div className="border-b border-slate-50 pb-2 flex items-center justify-between">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">Orchestration</h3>
                 <button
                   onClick={async () => {
                     setIsLoading(true);
                     await saveSettings(region, type, domainName, domainEmail, cloudflareToken, cloudflareEmail);
                     setIsLoading(false);
-                    showStatus('success', 'Parameters Saved', 'Persistent configuration updated. Changes will take effect on next server sync.');
+                    showStatus('success', 'Saved', 'Configuration updated.');
                   }}
-                  disabled={isLoading}
-                  className="w-full md:w-auto px-12 py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-sm uppercase tracking-[0.2em] hover:bg-slate-800 transition-all hover:shadow-2xl hover:shadow-slate-300 active:scale-95 disabled:opacity-50"
+                  className="px-3 py-1 bg-slate-900 text-white rounded-md font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all"
                 >
-                  Apply Settings
+                  Apply
                 </button>
-                <div className="flex items-start gap-4 max-w-lg">
-                  <div className="p-2 bg-amber-50 rounded-xl border border-amber-100 shadow-sm shrink-0">
-                    <RefreshCw className="w-5 h-5 text-amber-500" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Domain</label>
+                    <input
+                      type="text"
+                      value={domainName}
+                      onChange={(e) => setDomainName(e.target.value)}
+                      placeholder="try.lumalearn.com"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                    />
                   </div>
-                  <p className="text-xs font-bold text-slate-400 leading-relaxed italic mt-1">
-                    System Note: Domain logic requires a 'targeted deployment' to re-verify SSL certificates and update Caddy proxy headers.
-                  </p>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                    <input
+                      type="text"
+                      value={domainEmail}
+                      onChange={(e) => setDomainEmail(e.target.value)}
+                      placeholder="ops@yourdomain.com"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">CF Token</label>
+                    <input
+                      type="password"
+                      value={cloudflareToken}
+                      onChange={(e) => setCloudflareToken(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">CF Email</label>
+                    <input
+                      type="text"
+                      value={cloudflareEmail}
+                      onChange={(e) => setCloudflareEmail(e.target.value)}
+                      placeholder="admin@cloudflare.com"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-md px-2 py-1 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Terminal Info Card - 4 Cols */}
-            <div className="lg:col-span-12 xl:col-span-4 bg-indigo-600 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-indigo-600/30 flex flex-col justify-between group">
-               <div className="space-y-6">
-                 <h4 className="text-xs font-black uppercase tracking-[0.3em] opacity-80 mb-2">Host Access</h4>
-                 <p className="text-lg font-bold leading-snug text-indigo-50">
-                   Manage your server directly using standard Unix terminal tools.
-                 </p>
-                 <div className="space-y-4 pt-4">
-                    <div className="bg-indigo-900/40 rounded-2xl p-5 font-mono text-sm leading-relaxed border border-white/10 shadow-inner group-hover:bg-indigo-900/60 transition-all">
-                      <span className="text-indigo-300 opacity-60 ml-1 block mb-2 text-[10px] font-black tracking-widest">SSH COMMAND</span>
-                      <span className="select-all break-all block">ssh root@{infraStatus.resourceInfo?.ip}</span>
+            {/* Access Info Card - Condensed */}
+            <div className="lg:col-span-4 bg-indigo-600 rounded-xl p-4 text-white shadow-lg shadow-indigo-100 flex flex-col justify-between">
+               <div className="space-y-3">
+                 <h4 className="text-[9px] font-black uppercase tracking-[0.2em] opacity-80">Root Access</h4>
+                 <div className="flex flex-col gap-2">
+                    <div className="bg-indigo-900/40 rounded-lg p-2 font-mono text-[11px] border border-white/5 relative group/ssh">
+                      <span className="text-indigo-300 opacity-60 block text-[8px] font-black mb-1">SSH</span>
+                      <code className="select-all block truncate">ssh root@{infraStatus.resourceInfo?.ip}</code>
                     </div>
-                    <div className="bg-indigo-900/40 rounded-2xl p-5 font-mono text-sm leading-relaxed border border-white/10 shadow-inner group-hover:bg-indigo-900/60 transition-all">
-                      <span className="text-indigo-300 opacity-60 ml-1 block mb-2 text-[10px] font-black tracking-widest">PORT POLICY</span>
-                      <span className="font-bold">443 (HTTPS), 80 (HTTP), 22 (SSH)</span>
+                    
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-black uppercase text-indigo-300 tracking-widest ml-1">Password</label>
+                       <div className="flex items-center gap-2 bg-indigo-900/40 rounded-lg px-2 py-1.5 border border-white/5">
+                        <span className="font-mono text-xs font-bold text-indigo-100 flex-1 truncate">
+                          {showPassword ? infraStatus.resourceInfo?.rootPass : '••••••••'}
+                        </span>
+                        <button onClick={() => setShowPassword(!showPassword)} className="p-1 hover:bg-white/10 rounded-md">
+                          {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        </button>
+                       </div>
                     </div>
                  </div>
                </div>
             </div>
           </div>
 
-          {/* Deployment Console - Moved to the bottom and widened */}
-          <div className="bg-slate-900 rounded-[2.5rem] p-10 shadow-2xl border border-slate-800 space-y-8">
-            <div className="flex items-center justify-between px-4">
-              <div className="flex items-center gap-4">
-                <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.6)] animate-pulse" />
-                <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.3em]">Deployment Console (STDOUT)</h3>
-              </div>
+          {/* Log Viewer - Condensed */}
+          <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800">
+            <div className="bg-slate-800/50 px-4 py-2 flex items-center justify-between border-b border-slate-700/50">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin text-emerald-500" />
+                SYSTEM LOGS
+              </p>
             </div>
-            
-            <div className="bg-black/40 rounded-[2rem] p-10 font-mono text-xs low-scrollbar overflow-y-auto min-h-[400px] leading-relaxed border border-white/5 shadow-inner">
-              {logs ? (
-                <div className="space-y-1.5">
-                  {logs.split('\n').map((line, i) => (
-                    <div key={i} className="group flex gap-6 hover:bg-white/5 px-2 py-0.5 rounded-lg transition-colors">
-                      <span className="text-slate-700 select-none font-bold text-right w-8">{i + 1}</span>
-                      <span className={
-                        line.includes('Error') || line.includes('FATAL') ? 'text-rose-400 font-bold' :
-                        line.includes('Success') || line.includes('Complete') ? 'text-emerald-400 font-bold' :
-                        line.includes('$') ? 'text-indigo-400 font-black tracking-tight' :
-                        'text-slate-300 opacity-90'
-                      }>
-                        {line}
-                      </span>
-                    </div>
-                  ))}
+            <div ref={logContainerRef} className="p-4 h-[250px] overflow-y-auto font-mono text-[11px] leading-tight space-y-0.5 bg-slate-950/50">
+              {logs ? logs.split('\n').map((line, i) => (
+                <div key={i} className="flex gap-3 text-slate-400 hover:text-slate-300 transition-colors">
+                  <span className="text-slate-800 select-none w-4 text-right shrink-0">{(i + 1)}</span>
+                  <span className={line.includes('Error') ? 'text-rose-400' : line.includes('Success') ? 'text-emerald-400' : ''}>{line}</span>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-700 space-y-6 opacity-30">
-                  <RefreshCw className="w-16 h-16 opacity-10 animate-[spin_10s_linear_infinite]" />
-                  <span className="font-black tracking-[0.4em] uppercase text-xs">Awaiting Infrastructure Events</span>
-                </div>
+              )) : (
+                <div className="h-full flex items-center justify-center text-slate-800 text-[10px] font-black uppercase tracking-widest opacity-30">No Logs</div>
               )}
             </div>
           </div>
         </div>
       ) : (
-        /* Empty State / Create Infrastructure - Widened and spaced */
-        <div className="max-w-3xl mx-auto py-24 text-center space-y-12 animate-in zoom-in-95 duration-500">
-           <div className="relative group">
-              <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full group-hover:scale-125 transition-transform duration-1000" />
-              <div className="relative w-32 h-32 bg-white rounded-[3rem] flex items-center justify-center mx-auto shadow-2xl border border-slate-100 group-hover:rotate-12 transition-all duration-500">
-                <Globe className="w-16 h-16 text-indigo-500" />
-              </div>
-           </div>
-           
-           <div className="space-y-4">
-             <h3 className="text-5xl font-black text-slate-900 tracking-tight">Provision Cluster</h3>
-             <p className="text-slate-500 text-xl font-medium max-w-xl mx-auto leading-relaxed opacity-80">
-               Spin up a high-performance Linode instance and automate your deployment in one click.
+        /* Empty State / Create Infrastructure - Ultra Low Profile */
+        <div className="mx-auto py-1 text-center space-y-3 animate-in zoom-in-95 duration-500 max-w-xl">
+           <div className="space-y-0.5">
+             <h3 className="text-lg font-black text-slate-800 tracking-tight">Provision Infrastructure</h3>
+             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest opacity-60">
+               Initialize cloud resources for project runtime
              </p>
            </div>
 
-           <div className="bg-white border border-slate-200 rounded-[3.5rem] p-16 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] text-left space-y-12">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                <div className="space-y-4">
-                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] block ml-2">Hardware Affinity</label>
-                  <div className="relative group">
+           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm text-left space-y-5">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Hardware Affinity</label>
+                  <div className="relative">
                     <select
                       value={region}
                       onChange={(e) => {
@@ -592,7 +498,7 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         setRegion(val);
                         saveSettings(val, type, domainName, domainEmail, cloudflareToken, cloudflareEmail);
                       }}
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 py-5 text-slate-900 text-lg focus:bg-white focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-black appearance-none cursor-pointer shadow-sm capitalize"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold appearance-none cursor-pointer shadow-sm capitalize"
                       disabled={isLoading}
                     >
                       <option value="us-east">Atlantic East (Newark)</option>
@@ -602,15 +508,12 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                       <option value="eu-central">Europe Central (Frankfurt)</option>
                       <option value="eu-west">Europe West (London)</option>
                     </select>
-                    <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
-                      <RefreshCw className="w-5 h-5 opacity-40" />
-                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] block ml-2">Compute Power</label>
-                  <div className="relative group">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Compute Power</label>
+                  <div className="relative">
                     <select
                       value={type}
                       onChange={(e) => {
@@ -618,51 +521,107 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                         setType(val);
                         saveSettings(region, val, domainName, domainEmail, cloudflareToken, cloudflareEmail);
                       }}
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 py-5 text-slate-900 text-lg focus:bg-white focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-black appearance-none cursor-pointer shadow-sm"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold appearance-none cursor-pointer shadow-sm"
                       disabled={isLoading}
                     >
                       <option value="g6-nanode-1">Nanode (1vCPU / 1GB)</option>
                       <option value="g6-standard-1">Standard (1vCPU / 2GB)</option>
                       <option value="g6-standard-2">Standard (2vCPU / 4GB)</option>
                     </select>
-                    <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
-                       <RefreshCw className="w-5 h-5 opacity-40" />
+                  </div>
+                </div>
+             </div>
+
+             {/* Setup Orchestration Parameters - Extreme Density */}
+             <div className="space-y-4 pt-4 border-t border-slate-50">
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">Network Orchestration</h4>
+                  <p className="text-slate-400 text-[10px] font-medium leading-none">Automatic SSL & Routing Control</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Canonical Domain</label>
+                      <input
+                        type="text"
+                        value={domainName}
+                        onChange={(e) => setDomainName(e.target.value)}
+                        placeholder="try.domain.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">SSL Email</label>
+                      <input
+                        type="text"
+                        value={domainEmail}
+                        onChange={(e) => setDomainEmail(e.target.value)}
+                        placeholder="ops@domain.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Cloudflare Token</label>
+                      <div className="relative">
+                        <input
+                          type="password"
+                          value={cloudflareToken}
+                          onChange={(e) => setCloudflareToken(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Operator Email</label>
+                      <input
+                        type="text"
+                        value={cloudflareEmail}
+                        onChange={(e) => setCloudflareEmail(e.target.value)}
+                        placeholder="admin@cloudflare.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all font-bold placeholder:text-slate-300 shadow-sm"
+                        disabled={isLoading}
+                      />
                     </div>
                   </div>
                 </div>
              </div>
 
-             <div className="bg-indigo-50/50 rounded-3xl p-8 border border-indigo-100 flex items-center gap-6">
-               <div className="p-4 bg-white rounded-2xl shadow-md border border-indigo-100 ring-4 ring-white/50">
-                 <RefreshCw className={`w-8 h-8 text-indigo-500 ${isLoading ? 'animate-spin' : ''}`} />
+             <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-100 flex items-center gap-3">
+               <div className="p-1.5 bg-white rounded-md shadow-sm border border-slate-100 shrink-0">
+                 <RefreshCw className={`w-3 h-3 text-indigo-400 ${isLoading ? 'animate-spin' : ''}`} />
                </div>
-               <div className="space-y-1">
-                 <p className="text-lg font-black text-slate-800 tracking-tight">Zero-Touch Provisioning</p>
-                 <p className="text-sm font-bold text-indigo-900/40 leading-relaxed italic">
-                   Infrastructure automatically mounts Docker, Git, and Caddy SSL proxy.
-                 </p>
-               </div>
+               <p className="text-[10px] font-bold text-slate-400 leading-tight italic">
+                 Automated: Docker, Git, and Caddy SSL proxy setup included.
+               </p>
              </div>
 
              <button
               onClick={handleDeploy}
               disabled={isLoading}
-              className={`group relative overflow-hidden flex items-center justify-center gap-4 w-full py-8 px-12 rounded-3xl text-sm font-black uppercase tracking-[0.3em] text-white transition-all shadow-2xl active:scale-[0.98] ${
+              className={`group relative overflow-hidden flex items-center justify-center gap-2 w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all shadow-md active:scale-[0.98] ${
                 isLoading 
                    ? 'bg-indigo-300 cursor-not-allowed shadow-none' 
-                   : 'bg-indigo-600 hover:bg-slate-900 shadow-indigo-600/30'
+                   : 'bg-indigo-600 hover:bg-slate-900 shadow-indigo-600/10'
               }`}
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite] pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite] pointer-events-none" />
               {isLoading ? (
                 <>
-                  <RefreshCw className="animate-spin h-6 w-6" />
-                  Orchestrating Cluster Infrastructure...
+                   <RefreshCw className="animate-spin h-4 w-4" />
+                   INITIALIZING...
                 </>
               ) : (
                 <>
-                  <Upload className="w-6 h-6 group-hover:scale-125 transition-transform duration-500" />
-                  Initiate Secure Provisioning
+                  <Upload className="w-4 h-4" />
+                  PROVISION INFRASTRUCTURE
                 </>
               )}
             </button>

@@ -106,9 +106,9 @@ export function ProjectSettings({
       </svg>}
     >
         <div className="flex h-full">
-          {/* Sidebar Tabs */}
-          <div className="w-56 bg-white border-r border-gray-200 ">
-          <nav className="p-4 space-y-1">
+          {/* Sidebar Tabs - Condensed */}
+          <div className="w-48 bg-white border-r border-gray-100 shrink-0">
+          <nav className="p-2.5 space-y-0.5 mt-1">
             {availableTabs.map(tab => {
               const isActive = activeTab === tab.id;
               const isInfra = tab.id === 'infrastructure';
@@ -117,30 +117,23 @@ export function ProjectSettings({
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-300 relative group ${
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all duration-200 relative group ${
                     isActive
                       ? isInfra 
-                        ? 'bg-slate-900 text-white shadow-xl shadow-slate-200 border border-slate-800'
-                        : 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 shadow-sm border border-blue-100'
-                      : 'hover:bg-gray-50 text-gray-500 hover:text-gray-900'
+                        ? 'bg-slate-900 text-white shadow-lg border border-slate-800'
+                        : 'bg-indigo-50 text-indigo-600 font-bold border border-indigo-100'
+                      : 'hover:bg-gray-50 text-slate-500 hover:text-slate-900'
                   }`}
                 >
-                  {/* Left Indicator bar */}
-                  {isActive && (
-                    <div className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full ${
-                      isInfra ? 'bg-indigo-400' : 'bg-blue-500'
-                    }`} />
-                  )}
-                  
-                  <span className={`${isActive ? (isInfra ? 'text-indigo-300' : 'text-blue-600') : 'text-gray-400 opacity-70'} transition-colors`}>
+                  <span className={`${isActive ? (isInfra ? 'text-indigo-300' : 'text-indigo-600') : 'text-slate-400'} transition-colors scale-90`}>
                     {tab.icon}
                   </span>
-                  <span className={`text-sm tracking-tight ${isActive ? 'font-bold' : 'font-medium'}`}>
+                  <span className={`text-[13px] tracking-tight ${isActive ? 'font-bold' : 'font-medium'}`}>
                     {tab.label}
                   </span>
                   
                   {isActive && isInfra && (
-                    <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <div className="absolute right-2 w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
                   )}
                 </button>
               );
