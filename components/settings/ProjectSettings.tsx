@@ -99,6 +99,7 @@ export function ProjectSettings({
       isOpen={isOpen}
       onClose={onClose}
       title="Project Settings"
+      className={activeTab === 'infrastructure' ? 'max-w-7xl' : 'max-w-4xl'}
       icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -108,22 +109,42 @@ export function ProjectSettings({
           {/* Sidebar Tabs */}
           <div className="w-56 bg-white border-r border-gray-200 ">
           <nav className="p-4 space-y-1">
-            {availableTabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left transition-all duration-200 ${
-                  activeTab === tab.id
-                    ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 shadow-sm border border-blue-200 '
-                    : 'hover:bg-gray-50 text-gray-600 hover:text-gray-900 '
-                }`}
-              >
-                <span className={activeTab === tab.id ? 'text-blue-600 ' : 'text-gray-500 '}>
-                  {tab.icon}
-                </span>
-                <span className="text-sm font-medium">{tab.label}</span>
-              </button>
-            ))}
+            {availableTabs.map(tab => {
+              const isActive = activeTab === tab.id;
+              const isInfra = tab.id === 'infrastructure';
+              
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-300 relative group ${
+                    isActive
+                      ? isInfra 
+                        ? 'bg-slate-900 text-white shadow-xl shadow-slate-200 border border-slate-800'
+                        : 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 shadow-sm border border-blue-100'
+                      : 'hover:bg-gray-50 text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  {/* Left Indicator bar */}
+                  {isActive && (
+                    <div className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full ${
+                      isInfra ? 'bg-indigo-400' : 'bg-blue-500'
+                    }`} />
+                  )}
+                  
+                  <span className={`${isActive ? (isInfra ? 'text-indigo-300' : 'text-blue-600') : 'text-gray-400 opacity-70'} transition-colors`}>
+                    {tab.icon}
+                  </span>
+                  <span className={`text-sm tracking-tight ${isActive ? 'font-bold' : 'font-medium'}`}>
+                    {tab.label}
+                  </span>
+                  
+                  {isActive && isInfra && (
+                    <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
           </nav>
         </div>
 

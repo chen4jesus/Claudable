@@ -10,16 +10,17 @@ interface SettingsModalProps {
   title: string;
   icon?: ReactNode;
   children: ReactNode;
+  className?: string;
 }
 
-export function SettingsModal({ isOpen, onClose, title, icon, children }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, title, icon, children, className }: SettingsModalProps) {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       
-      <div className="absolute inset-y-0 right-0 max-w-3xl w-full bg-white shadow-2xl flex flex-col">
+      <div className={`absolute inset-y-0 right-0 ${className || 'max-w-3xl'} w-full bg-white shadow-2xl flex flex-col transition-all duration-300 ease-in-out`}>
         {/* Header */}
         <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 ">
           <div className="flex items-center justify-between">
