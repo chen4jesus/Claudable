@@ -5,7 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { MotionDiv } from '@/lib/motion';
 import { AlertCircle, CheckCircle2, Info, XCircle, X } from 'lucide-react';
 
-export type ModalType = 'error' | 'success' | 'info' | 'confirm';
+export type ModalType = 'error' | 'success' | 'info' | 'confirm' | 'warning';
 
 interface StatusModalProps {
   isOpen: boolean;
@@ -33,7 +33,8 @@ export function StatusModal({
     switch (type) {
       case 'error': return <XCircle className="w-12 h-12 text-red-500" />;
       case 'success': return <CheckCircle2 className="w-12 h-12 text-green-500" />;
-      case 'confirm': return <AlertCircle className="w-12 h-12 text-amber-500" />;
+      case 'confirm':
+      case 'warning': return <AlertCircle className="w-12 h-12 text-amber-500" />;
       default: return <Info className="w-12 h-12 text-blue-500" />;
     }
   };
@@ -42,7 +43,8 @@ export function StatusModal({
     switch (type) {
       case 'error': return 'bg-red-600 hover:bg-red-700 focus:ring-red-500';
       case 'success': return 'bg-green-600 hover:bg-green-700 focus:ring-green-500';
-      case 'confirm': return 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500';
+      case 'confirm':
+      case 'warning': return 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500';
       default: return 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500';
     }
   };

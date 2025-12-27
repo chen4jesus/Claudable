@@ -14,6 +14,8 @@ interface TerraformStatus {
         region: string;
         status: string;
         rootPass?: string;
+        ip?: string;
+        type: string;
     };
 }
 

@@ -125,7 +125,7 @@ interface ServiceToken {
 export default function GlobalSettings({ isOpen, onClose, initialTab = 'general' }: GlobalSettingsProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'users' | 'groups' | 'prompt-injections' | 'account' | 'about'>(initialTab);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | 'linode' | null>(null);
   const [tokens, setTokens] = useState<{ [key: string]: ServiceToken | null }>({
     github: null,
     supabase: null,
