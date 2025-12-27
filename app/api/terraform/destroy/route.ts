@@ -17,12 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await destroyProject(projectId, token);
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

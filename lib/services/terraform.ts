@@ -6,7 +6,7 @@ import { createWriteStream } from 'fs';
 import { getProjectById } from '@/lib/services/project';
 import { getPlainServiceToken } from '@/lib/services/tokens';
 import { getProjectService } from '@/lib/services/project-services';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 
 const execAsync = promisify(exec);
 const isWindows = process.platform === 'win32';
