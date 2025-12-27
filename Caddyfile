@@ -1,41 +1,27 @@
 {
-    email c4j@faithconnect.us
-    # Force lets encrypt as the primary issuer
-    cert_issuer acme
-    on_demand_tls {
-        ask http://app:3000/api/caddy/ask
-    }
+    # Cloudflare terminates TLS
+    auto_https off
 }
 
-# 1. Main Application
-build.faithconnect.us {
+# Main app + all preview subdomains
+build.faithconnect.us, *.build.faithconnect.us {
+
     log {
         output file /data/access.log
     }
-    reverse_proxy app:3000
-}
 
-# 2. Project Previews (Wildcard)
-*.build.faithconnect.us {
-    # Matches p{port}-{projectId}.build.faithconnect.us
-    # The port is extracted from the p{port}- prefix.
+    # Match preview hostnames like:
+    # p3001-projectId.build.faithconnect.us
     @preview {
         header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
     }
 
-    tls {
-        on_demand
-    }
-    log {
-        output file /data/preview_access.log
-    }
-
-    # Handle prefixed ports
+    # Route preview traffic to dynamic port
     handle @preview {
         reverse_proxy app:{re.host.1}
     }
 
-    # Fallback to default app port
+    # Default app
     handle {
         reverse_proxy app:3000
     }
