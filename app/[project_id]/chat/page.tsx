@@ -351,6 +351,10 @@ export default function ChatPage() {
   const [linodeConnected, setLinodeConnected] = useState<boolean | null>(null);
   const [linodeRegion, setLinodeRegion] = useState<string>('us-east');
   const [linodeType, setLinodeType] = useState<string>('g6-nanode-1');
+  const [linodeDomainName, setLinodeDomainName] = useState<string>('');
+  const [linodeDomainEmail, setLinodeDomainEmail] = useState<string>('');
+  const [cloudflareToken, setCloudflareToken] = useState<string>('');
+  const [cloudflareEmail, setCloudflareEmail] = useState<string>('');
   const [selectedProviders, setSelectedProviders] = useState<Set<string>>(new Set(['github']));
 
   // Initialize states with default values, will be loaded from localStorage in useEffect
@@ -813,8 +817,13 @@ const persistProjectPreferences = useCallback(
         setLinodeConnected(!!linodeConnection);
 
         if (linodeConnection && linodeConnection.service_data) {
-          if (linodeConnection.service_data.region) setLinodeRegion(linodeConnection.service_data.region);
-          if (linodeConnection.service_data.type) setLinodeType(linodeConnection.service_data.type);
+          const sd = linodeConnection.service_data;
+          if (sd.region) setLinodeRegion(sd.region);
+          if (sd.type) setLinodeType(sd.type);
+          if (sd.domainName) setLinodeDomainName(sd.domainName);
+          if (sd.domainEmail) setLinodeDomainEmail(sd.domainEmail);
+          if (sd.cloudflareToken) setCloudflareToken(sd.cloudflareToken);
+          if (sd.cloudflareEmail) setCloudflareEmail(sd.cloudflareEmail);
         }
         
         // Set published URL only if actually deployed
@@ -3567,8 +3576,12 @@ const persistProjectPreferences = useCallback(
                              body: JSON.stringify({ 
                                projectId,
                                region: linodeRegion,
-                                ensureExisting: true,
-                               type: linodeType
+                               ensureExisting: true,
+                               type: linodeType,
+                               domainName: linodeDomainName,
+                               domainEmail: linodeDomainEmail,
+                               cloudflareToken: cloudflareToken,
+                               cloudflareEmail: cloudflareEmail
                              })
                            }).then(async (res) => {
                               if (!res.ok) throw new Error(await res.text());

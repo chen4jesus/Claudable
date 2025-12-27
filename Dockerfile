@@ -51,6 +51,26 @@ COPY . .
 ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 
+# Pass NEXT_PUBLIC_API_BASE at build time so it gets baked into client-side bundles
+ARG NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+
+# Pass CLAUDE_PW at build time so it gets baked into client-side bundles
+ARG CLAUDE_PW
+ENV CLAUDE_PW=${CLAUDE_PW}
+
+# Pass CLAUDE_API_KEY at build time so it gets baked into client-side bundles
+ARG CLAUDE_API_KEY
+ENV CLAUDE_API_KEY=${CLAUDE_API_KEY}
+
+# Pass JWT  _SECRET at build time so it gets baked into client-side bundles
+ARG JWT_SECRET
+ENV JWT_SECRET=${JWT_SECRET}
+
+# Pass ENCRYPTION_KEY at build time so it gets baked into client-side bundles
+ARG ENCRYPTION_KEY
+ENV ENCRYPTION_KEY=${ENCRYPTION_KEY}
+
 # 9. npm run build
 RUN npm run build
 
