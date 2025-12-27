@@ -111,25 +111,43 @@ export function normalizeCliSettings(settings: unknown): CLISettings | undefined
   return normalized;
 }
 
+let updateQueue: Promise<GlobalSettings> | null = null;
+
 export async function updateGlobalSettings(partial: Partial<GlobalSettings>): Promise<GlobalSettings> {
-  const current = await loadGlobalSettings();
+  const task = async () => {
+    const current = await loadGlobalSettings();
+    const cliSettings = normalizeCliSettings(partial.cli_settings);
 
-  const cliSettings = normalizeCliSettings(partial.cli_settings);
+    const next: GlobalSettings = {
+      default_cli: partial.default_cli ?? current.default_cli,
+      cli_settings: { ...current.cli_settings },
+    };
 
-  const next: GlobalSettings = {
-    default_cli: partial.default_cli ?? current.default_cli,
-    cli_settings: { ...current.cli_settings },
+    if (cliSettings) {
+      for (const [cli, config] of Object.entries(cliSettings)) {
+        next.cli_settings[cli] = {
+          ...(current.cli_settings[cli] ?? {}),
+          ...config,
+        };
+      }
+    }
+
+    await writeSettings(next);
+    return next;
   };
 
-  if (cliSettings) {
-    for (const [cli, config] of Object.entries(cliSettings)) {
-      next.cli_settings[cli] = {
-        ...(current.cli_settings[cli] ?? {}),
-        ...config,
-      };
-    }
+  // Atomic update queue to prevent clobbering concurrent writes
+  if (!updateQueue) {
+    updateQueue = task();
+  } else {
+    updateQueue = updateQueue.then(() => task());
   }
 
-  await writeSettings(next);
-  return next;
+  try {
+    return await updateQueue;
+  } finally {
+    // We don't want to keep the finished promise chain growing indefinitely
+    // but we need to be careful with concurrency. In this simple implementation,
+    // we just return the result. For high-volume systems a more robust queue would be used.
+  }
 }

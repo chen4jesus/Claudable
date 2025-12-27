@@ -124,9 +124,18 @@ interface CreateProjectModalProps {
   onClose: () => void;
   onCreated: () => void;
   onOpenGlobalSettings?: () => void;
+  initialCLI?: string;
+  initialModel?: string;
 }
 
-export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlobalSettings }: CreateProjectModalProps) {
+export default function CreateProjectModal({ 
+  open, 
+  onClose, 
+  onCreated, 
+  onOpenGlobalSettings,
+  initialCLI,
+  initialModel
+}: CreateProjectModalProps) {
   const [projectName, setProjectName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [selectedCLI, setSelectedCLI] = useState<string>('claude');
@@ -239,19 +248,24 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         const effectiveCLIs = enabled.length > 0 ? enabled : CLI_OPTIONS.filter((cli) => cli.enabled !== false);
         setEnabledCLIs(effectiveCLIs);
 
-        const defaultCLI = settings.default_cli || 'claude';
+        const defaultCLI = initialCLI || settings.default_cli || 'claude';
         const preferredCLI =
           effectiveCLIs.find((cli) => cli.id === defaultCLI)?.id ?? effectiveCLIs[0]?.id ?? 'claude';
         setSelectedCLI(preferredCLI);
         setFallbackEnabled(settings.fallback_enabled ?? true);
 
-        const preferredModelSetting = settings.cli_settings?.[preferredCLI]?.model;
+        const preferredModelSetting = initialModel || settings.cli_settings?.[preferredCLI]?.model;
         if (preferredModelSetting) {
           setSelectedModel(sanitizeModel(preferredCLI, preferredModelSetting as string));
         } else {
           const fallbackModel =
             effectiveCLIs.find((cli) => cli.id === preferredCLI)?.models[0]?.id ?? DEFAULT_MODEL_ID;
           setSelectedModel(sanitizeModel(preferredCLI, fallbackModel));
+        }
+
+        // If user provided initial settings, disable "Default Settings" toggle to make it clear what's happening
+        if (initialCLI || initialModel) {
+          setUseDefaultSettings(false);
         }
       } else {
         const available = CLI_OPTIONS.filter(
@@ -260,24 +274,30 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         const effectiveCLIs = available.length > 0 ? available : CLI_OPTIONS.filter((cli) => cli.enabled !== false);
         setEnabledCLIs(effectiveCLIs);
 
-        const fallbackCLI = effectiveCLIs[0]?.id ?? 'claude';
+        const fallbackCLI = initialCLI || effectiveCLIs[0]?.id || 'claude';
         setSelectedCLI(fallbackCLI);
-        const fallbackModel = effectiveCLIs[0]?.models[0]?.id ?? DEFAULT_MODEL_ID;
+        const fallbackModel = initialModel || effectiveCLIs[0]?.models[0]?.id || DEFAULT_MODEL_ID;
         setSelectedModel(sanitizeModel(fallbackCLI, fallbackModel));
         setFallbackEnabled(true);
+        if (initialCLI || initialModel) {
+          setUseDefaultSettings(false);
+        }
       }
     } catch (error) {
       console.error('Failed to load global settings:', error);
       setCLIStatus(createCliStatusFallback());
       const available = CLI_OPTIONS.filter((cli) => cli.enabled !== false);
       setEnabledCLIs(available);
-      const fallbackCLI = available[0]?.id ?? 'claude';
+      const fallbackCLI = initialCLI || available[0]?.id || 'claude';
       setSelectedCLI(fallbackCLI);
-      const fallbackModel = available[0]?.models[0]?.id ?? DEFAULT_MODEL_ID;
+      const fallbackModel = initialModel || available[0]?.models[0]?.id || DEFAULT_MODEL_ID;
       setSelectedModel(sanitizeModel(fallbackCLI, fallbackModel));
       setFallbackEnabled(true);
+      if (initialCLI || initialModel) {
+        setUseDefaultSettings(false);
+      }
     }
-  }, []);
+  }, [initialCLI, initialModel]);
 
   // Load global settings, enabled CLIs, and groups when modal opens
   useEffect(() => {

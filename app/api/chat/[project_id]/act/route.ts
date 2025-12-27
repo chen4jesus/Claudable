@@ -29,6 +29,7 @@ import {
   upsertUserRequest,
   markUserRequestAsProcessing,
 } from '@/lib/services/user-requests';
+import { applyInjections } from '@/lib/services/prompt-injections';
 
 interface RouteContext {
   params: Promise<{ project_id: string }>;
@@ -255,6 +256,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       ? (legacyBody['images'] as RawImageAttachment[])
       : [];
 
+    const isInitialPrompt =
+      body.isInitialPrompt === true ||
+      legacyBody['is_initial_prompt'] === true ||
+      legacyBody['is_initial_prompt'] === 'true';
+
     const processedImages: { name: string; path: string; url: string; publicUrl?: string }[] = [];
     for (let index = 0; index < rawImages.length; index += 1) {
       const normalized = await normalizeImageAttachment(project_id, projectRoot, rawImages[index], index);
@@ -264,10 +270,18 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const imageLines = processedImages.map((image, idx) => `Image #${idx + 1} path: ${image.path}`);
-    const finalInstruction = [instructionWithoutLegacyPaths, imageLines.join('\n')]
+    let finalInstruction = [instructionWithoutLegacyPaths, imageLines.join('\n')]
       .filter((segment) => segment && segment.trim().length > 0)
       .join('\n\n')
       .trim();
+
+    // Apply Admin Prompt Injections
+    try {
+      const injectionPoint = isInitialPrompt ? 'INIT_PROMPT' : 'CHAT_MESSAGE';
+      finalInstruction = await applyInjections(finalInstruction, injectionPoint, project.templateType || undefined);
+    } catch (error) {
+      console.warn('[API] Failed to apply prompt injections:', error);
+    }
 
     if (!finalInstruction) {
       return NextResponse.json(
@@ -298,10 +312,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       coerceString(legacyBody['request_id']) ??
       generateProjectId();
 
-    const isInitialPrompt =
-      body.isInitialPrompt === true ||
-      legacyBody['is_initial_prompt'] === true ||
-      legacyBody['is_initial_prompt'] === 'true';
 
     const metadata =
       processedImages.length > 0

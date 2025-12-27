@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import GitHubRepoModal from '@/components/modals/GitHubRepoModal';
 import VercelProjectModal from '@/components/modals/VercelProjectModal';
 import SupabaseModal from '@/components/modals/SupabaseModal';
+import { StatusModal, type ModalType } from '@/components/modals/StatusModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
@@ -75,6 +76,25 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
   const [vercelModalOpen, setVercelModalOpen] = useState(false);
   const [supabaseModalOpen, setSupabaseModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Status Modal State
+  const [statusModal, setStatusModal] = useState<{
+    isOpen: boolean;
+    type: ModalType;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+
+  const showStatus = (type: ModalType, title: string, message: string, onConfirm?: () => void, confirmLabel?: string) => {
+    setStatusModal({ isOpen: true, type, title, message, onConfirm, confirmLabel });
+  };
 
   const getProviderIcon = (provider: string) => {
     switch (provider) {
@@ -178,7 +198,7 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
     }
     
     // For other services, show placeholder
-    alert(`${serviceId} integration not implemented yet.`);
+    showStatus('info', 'Not Implemented', `${serviceId} integration not implemented yet.`);
   };
 
   const handleGitHubModalSuccess = () => {
@@ -200,25 +220,32 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
   };
 
   const handleDisconnect = async (serviceId: string) => {
-    if (!confirm(`Disconnect from ${serviceId}?`)) return;
-    
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/projects/${projectId}/services/${serviceId}`, {
-        method: 'DELETE'
-      });
-      
-      if (response.ok) {
-        loadServiceConnections(); // Reload connections
-      } else {
-        alert(`Failed to disconnect from ${serviceId}`);
-      }
-    } catch (error) {
-      console.error(`Error disconnecting from ${serviceId}:`, error);
-      alert(`Failed to disconnect from ${serviceId}`);
-    } finally {
-      setIsLoading(false);
-    }
+    showStatus(
+      'confirm',
+      'Disconnect Service',
+      `Are you sure you want to disconnect ${serviceId}? This may affect your project's ability to deploy or sync data.`,
+      async () => {
+        setIsLoading(true);
+        try {
+          const response = await fetch(`${API_BASE}/api/projects/${projectId}/services/${serviceId}`, {
+            method: 'DELETE'
+          });
+          
+          if (response.ok) {
+            loadServiceConnections(); // Reload connections
+            showStatus('success', 'Success', `Successfully disconnected from ${serviceId}.`);
+          } else {
+            showStatus('error', 'Error', `Failed to disconnect from ${serviceId}.`);
+          }
+        } catch (error) {
+          console.error(`Error disconnecting from ${serviceId}:`, error);
+          showStatus('error', 'Error', `Failed to disconnect from ${serviceId}.`);
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      'Disconnect'
+    );
   };
 
   return (
@@ -375,6 +402,16 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
           onSuccess={handleSupabaseModalSuccess}
         />
       )}
+
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        onClose={() => setStatusModal(prev => ({ ...prev, isOpen: false }))}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmLabel={statusModal.confirmLabel}
+        onConfirm={statusModal.onConfirm}
+      />
     </div>
   );
 }

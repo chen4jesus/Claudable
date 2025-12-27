@@ -17,8 +17,13 @@ WORKDIR /var/local/Claudable
 # 4. curl ... nodejs setup 
 # 5. sudo apt install -y nodejs
 # 6. sudo apt install -y python3 ...
+# 2. apt update & install dependencies
+# 3. Add HashiCorp repo and install Terraform
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl git sudo build-essential && \
+    apt-get install -y curl git sudo build-essential gnupg software-properties-common && \
+    curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list && \
+    apt-get update && apt-get install -y terraform && \
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     apt-get install -y nodejs && \
     apt-get install -y python3 python3-pip python3-venv python-is-python3 gosu tini && \

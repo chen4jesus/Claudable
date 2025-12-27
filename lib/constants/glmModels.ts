@@ -13,7 +13,7 @@ export const GLM_MODEL_DEFINITIONS: GLMModelDefinition[] = [
     id: 'glm-4.7',
     name: 'GLM 4.7',
     description: 'Zhipu GLM 4.7 with Claude Code compatible agent runtime',
-    supportsImages: false,
+    supportsImages: true,
     aliases: [
       'glm47',
       'glm-47',

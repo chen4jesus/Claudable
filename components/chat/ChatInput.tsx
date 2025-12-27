@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { SendHorizontal, MessageSquare, Image as ImageIcon, Wrench } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { StatusModal, type ModalType } from '../modals/StatusModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
@@ -21,6 +22,7 @@ interface ModelPickerOption {
   cli: string;
   cliName: string;
   available: boolean;
+  supportsImages?: boolean;
 }
 
 interface CliPickerOption {
@@ -76,7 +78,31 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submissionLockRef = useRef(false);
-  const supportsImageUpload = preferredCli !== 'cursor' && preferredCli !== 'qwen' && preferredCli !== 'glm';
+
+  // Status Modal State
+  const [statusModal, setStatusModal] = useState<{
+    isOpen: boolean;
+    type: ModalType;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+
+  const showStatus = (type: ModalType, title: string, message: string, onConfirm?: () => void, confirmLabel?: string) => {
+    setStatusModal({ isOpen: true, type, title, message, onConfirm, confirmLabel });
+  };
+
+  const selectedModelOption = useMemo(() => {
+    return modelOptions.find(opt => opt.id === selectedModel);
+  }, [modelOptions, selectedModel]);
+
+  const supportsImageUpload = selectedModelOption?.supportsImages ?? false;
 
   // Log CLI compatibility details
   console.debug('🔧 CLI Compatibility Check:', {
@@ -207,13 +233,13 @@ export default function ChatInput({
   const handleFiles = useCallback(async (files: FileList) => {
     if (!projectId) {
       console.error('❌ No project ID available for image upload');
-      alert('No project selected. Please choose a project first.');
+      showStatus('error', 'No Project Selected', 'Please select or create a project before uploading images.');
       return;
     }
 
     if (!supportsImageUpload) {
       console.error('❌ Current CLI does not support image upload:', preferredCli);
-      alert(`Only Claude CLI supports image uploads.\nCurrent CLI: ${preferredCli}\nSwitch to Claude CLI.`);
+      showStatus('warning', 'Vision Unsupported', `The selected model (${selectedModelOption?.name || preferredCli}) does not support image uploads. Please switch to a vision-capable model like Claude Sonnet or Gemini Pro.`);
       return;
     }
 
@@ -280,9 +306,9 @@ export default function ChatInput({
           return updatedImages;
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Image upload failed:', error);
-      alert('Image upload failed. Please try again.');
+      showStatus('error', 'Upload Failed', error.message || 'Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -437,11 +463,9 @@ export default function ChatInput({
                 <div
                   className="flex items-center justify-center w-8 h-8 text-gray-300 cursor-not-allowed opacity-50 rounded-full"
                   title={
-                    preferredCli === 'qwen'
-                      ? 'Qwen Coder does not support image input. Please use Claude CLI.'
-                      : preferredCli === 'cursor'
-                      ? 'Cursor CLI does not support image input. Please use Claude CLI.'
-                      : 'GLM CLI supports text only. Please use Claude CLI.'
+                    selectedModelOption
+                      ? `Model ${selectedModelOption.name} does not support image input.`
+                      : 'Selected model does not support image input.'
                   }
                 >
                   <ImageIcon className="h-4 w-4" />
@@ -631,6 +655,16 @@ export default function ChatInput({
           </div>
         </div>
       )}
+
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        onClose={() => setStatusModal(prev => ({ ...prev, isOpen: false }))}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmLabel={statusModal.confirmLabel}
+        onConfirm={statusModal.onConfirm}
+      />
     </form>
   );
 }

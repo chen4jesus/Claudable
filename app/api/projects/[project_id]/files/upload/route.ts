@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { getProjectById } from '@/lib/services/project';
+import { uploadProjectFile } from '@/lib/services/file-browser';
 
 interface RouteContext {
   params: Promise<{ project_id: string }>;
@@ -74,26 +75,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Create target directory if it doesn't exist
     await fs.mkdir(absoluteTargetDir, { recursive: true });
 
-    // Generate a unique filename to avoid collisions
-    const originalName = file.name;
-    const ext = path.extname(originalName);
-    const baseName = path.basename(originalName, ext);
-    const timestamp = Date.now();
-    const uniqueName = `${baseName}-${timestamp}${ext}`;
-    
-    const absoluteFilePath = path.join(absoluteTargetDir, uniqueName);
-
-    // Write the file
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(absoluteFilePath, buffer);
+    // Use service to upload
+    const { path: relativePath } = await uploadProjectFile(
+      project_id,
+      targetDir,
+      file.name,
+      Buffer.from(await file.arrayBuffer())
+    );
 
     // Calculate the URL path relative to project root
-    // Normalize to forward slashes for URL
-    const relativePath = path.relative(projectRoot, absoluteFilePath).split(path.sep).join('/');
-    
-    // For static projects, the URL is typically relative to the root
-    // For Next.js projects with public folder, it's relative to public
-    // For Flask, it's relative to static (usually /static/...)
     let urlPath = '/' + relativePath;
     
     if (relativePath.startsWith('public/')) {
@@ -106,14 +96,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       }
     }
 
-    console.log(`[Upload] Saved file to: ${absoluteFilePath}, URL: ${urlPath}`);
+    console.log(`[Upload] Saved file to project, URL: ${urlPath}`);
 
     return NextResponse.json({
       success: true,
       data: {
         path: relativePath,
         url: urlPath,
-        filename: uniqueName,
+        filename: file.name,
       },
     });
   } catch (error) {

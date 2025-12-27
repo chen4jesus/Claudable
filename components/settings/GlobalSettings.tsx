@@ -6,12 +6,14 @@ import { MotionDiv } from '@/lib/motion';
 import ServiceConnectionModal from '@/components/modals/ServiceConnectionModal';
 import UserManagement from '@/components/settings/UserManagement';
 import GroupManagement from '@/components/settings/GroupManagement';
+import PromptInjectionManagement from '@/components/settings/PromptInjectionManagement';
 import AccountSettings from '@/components/settings/AccountSettings';
 import { FaCog } from 'react-icons/fa';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import { getModelDefinitionsForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
+import { useRouter } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
@@ -121,13 +123,14 @@ interface ServiceToken {
 }
 
 export default function GlobalSettings({ isOpen, onClose, initialTab = 'general' }: GlobalSettingsProps) {
-  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'users' | 'groups' | 'account' | 'about'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'users' | 'groups' | 'prompt-injections' | 'account' | 'about'>(initialTab);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | null>(null);
   const [tokens, setTokens] = useState<{ [key: string]: ServiceToken | null }>({
     github: null,
     supabase: null,
-    vercel: null
+    vercel: null,
+    linode: null
   });
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -138,6 +141,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   const [selectedCLI, setSelectedCLI] = useState<CLIOption | null>(null);
   const [apiKeyVisibility, setApiKeyVisibility] = useState<Record<string, boolean>>({});
   const [currentUser, setCurrentUser] = useState<{ username: string; role: string } | null>(null);
+  const router = useRouter();
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -146,7 +150,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   };
 
   const loadAllTokens = useCallback(async () => {
-    const providers = ['github', 'supabase', 'vercel'];
+    const providers = ['github', 'supabase', 'vercel', 'linode'];
     const newTokens: { [key: string]: ServiceToken | null } = {};
     
     for (const provider of providers) {
@@ -165,7 +169,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     setTokens(newTokens);
   }, []);
 
-  const handleServiceClick = (provider: 'github' | 'supabase' | 'vercel') => {
+  const handleServiceClick = (provider: 'github' | 'supabase' | 'vercel' | 'linode') => {
     setSelectedProvider(provider);
     setServiceModalOpen(true);
   };
@@ -362,6 +366,12 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
             <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" fill="currentColor"/>
           </svg>
         );
+      case 'linode':
+        return (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.3 2.15c-.17-.11-.38-.11-.55 0L6.46 5.38 2.05 8.1c-.17.11-.27.29-.27.49v6.82l.01 4.5c0 .2.11.38.28.49l7.75 4.75c.08.05.17.08.26.08.09 0 .18-.03.26-.08l7.75-4.75c.17-.11.27-.29.27-.49v-4.5l.01-6.82c0-.2-.1-.38-.27-.49L12.3 2.15zM12 18.35l-5.63-3.45V8l5.63 3.45 5.63-3.45v6.9L12 18.35z" fill="currentColor"/>
+          </svg>
+        );
       default:
         return null;
     }
@@ -417,6 +427,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                 { id: 'services' as const, label: 'Services' },
                 ...(currentUser?.role === 'admin' ? [{ id: 'users' as const, label: 'Users' }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'groups' as const, label: 'Groups' }] : []),
+                ...(currentUser?.role === 'admin' ? [{ id: 'prompt-injections' as const, label: 'Prompt Injections' }] : []),
                 { id: 'about' as const, label: 'About' }
               ].map(tab => (
                 <button
@@ -747,7 +758,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                           )}
                           <button
-                            onClick={() => handleServiceClick(provider as 'github' | 'supabase' | 'vercel')}
+                            onClick={() => handleServiceClick(provider as 'github' | 'supabase' | 'vercel' | 'linode')}
                             className="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-all"
                           >
                             {token ? 'Update Token' : 'Add Token'}
@@ -791,6 +802,10 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
 
             {activeTab === 'groups' && currentUser?.role === 'admin' && (
               <GroupManagement />
+            )}
+
+            {activeTab === 'prompt-injections' && currentUser?.role === 'admin' && (
+              <PromptInjectionManagement />
             )}
 
             {activeTab === 'about' && (

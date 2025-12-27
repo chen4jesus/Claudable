@@ -13,6 +13,12 @@ async function writeFileIfMissing(filePath: string, contents: string) {
   await fs.writeFile(filePath, contents, 'utf8');
 }
 
+async function writeInfrastructureFile(filePath: string, contents: string) {
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, contents, 'utf8');
+}
+
 export async function scaffoldBasicNextApp(
   projectPath: string,
   projectId: string
@@ -271,7 +277,7 @@ body {
 `
   );
 
-  await writeFileIfMissing(
+  await writeInfrastructureFile(
     path.join(projectPath, 'scripts/run-dev.js'),
     `#!/usr/bin/env node
 
@@ -377,6 +383,33 @@ function resolvePort(preferredPort) {
     }
   );
 
+  // Handle termination signals to ensure child process is killed
+  const cleanup = () => {
+    console.debug('🛑 Stopping Next.js dev server...');
+    // Ask nicely first
+    child.kill('SIGTERM');
+    
+    // Give it a moment, then force kill
+    const forceKill = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch(e) {}
+        process.exit(0);
+    }, 1000); // 1s wait
+
+    // If it exits on its own, clear timeout
+    child.once('exit', () => {
+        clearTimeout(forceKill);
+        process.exit(0);
+    });
+  };
+
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  
+  // Ensure we don't leave it hanging if we exit for other reasons
+  process.on('exit', () => {
+      try { child.kill(); } catch(e) {}
+  });
+
   child.on('exit', (code) => {
     if (typeof code === 'number' && code !== 0) {
       console.error(\`❌ Next.js dev server exited with code \${code}\`);
@@ -460,7 +493,7 @@ h1 {
   );
 
   // Universal serve script that detects build outputs and respects PORT
-  await writeFileIfMissing(
+  await writeInfrastructureFile(
     path.join(projectPath, 'scripts/serve.js'),
     `#!/usr/bin/env node
 
@@ -488,10 +521,14 @@ for (const dir of candidates) {
   }
 }
 
-// 2. Fallback: If still root, but 'public' exists (even without index.html), prefer public
-// This handles cases where index.html might be missing but assets are in public
-if (serveTarget === '.' && fs.existsSync(path.join(projectRoot, 'public'))) {
+// 2. Prefer root if it contains index.html
+// 3. Fallback: If still root, but 'public' exists (even without index.html), prefer public
+if (serveTarget === '.') {
+  if (fs.existsSync(path.join(projectRoot, 'index.html'))) {
+    serveTarget = '.';
+  } else if (fs.existsSync(path.join(projectRoot, 'public'))) {
     serveTarget = 'public';
+  }
 }
 
 console.debug(\`🚀 Starting static file server on port \${port}\`);
@@ -510,6 +547,33 @@ const child = spawn(
     },
   }
 );
+
+// Handle termination signals to ensure child process is killed
+const cleanup = () => {
+  console.debug('🛑 Stopping static server...');
+  // Ask nicely first
+  child.kill('SIGTERM');
+  
+  // Give it a moment, then force kill
+  const forceKill = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch(e) {}
+      process.exit(0);
+  }, 500); // 500ms wait is usually enough for 'serve'
+
+  // If it exits on its own, clear timeout
+  child.once('exit', () => {
+      clearTimeout(forceKill);
+      process.exit(0);
+  });
+};
+
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
+
+// Ensure we don't leave it hanging if we exit for other reasons
+process.on('exit', () => {
+    try { child.kill(); } catch(e) {}
+});
 
 child.on('exit', (code) => {
   if (code !== 0) {

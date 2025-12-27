@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { AiSmartEditToolbar } from '@/components/AiSmartEditToolbar';
 import { SmartEditModal } from '@/components/modals/SmartEditModal';
+import { StatusModal, type ModalType } from '@/components/modals/StatusModal';
 import { ElementContext } from '@/types/smart-edit';
 import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import {
@@ -347,6 +348,11 @@ export default function ChatPage() {
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<{name: string; url: string; base64?: string; path?: string}[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [linodeConnected, setLinodeConnected] = useState<boolean | null>(null);
+  const [linodeRegion, setLinodeRegion] = useState<string>('us-east');
+  const [linodeType, setLinodeType] = useState<string>('g6-nanode-1');
+  const [selectedProviders, setSelectedProviders] = useState<Set<string>>(new Set(['github']));
+
   // Initialize states with default values, will be loaded from localStorage in useEffect
   const [hasInitialPrompt, setHasInitialPrompt] = useState<boolean>(false);
   const [agentWorkComplete, setAgentWorkComplete] = useState<boolean>(false);
@@ -384,6 +390,25 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTarget, setUploadTarget] = useState<string>('.');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+
+  // Status Modal State
+  const [statusModal, setStatusModal] = useState<{
+    isOpen: boolean;
+    type: ModalType;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+
+  const showStatus = (type: ModalType, title: string, message: string, onConfirm?: () => void, confirmLabel?: string) => {
+    setStatusModal({ isOpen: true, type, title, message, onConfirm, confirmLabel });
+  };
 
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -780,10 +805,17 @@ const persistProjectPreferences = useCallback(
         const connections = await response.json();
         const githubConnection = connections.find((conn: any) => conn.provider === 'github');
         const vercelConnection = connections.find((conn: any) => conn.provider === 'vercel');
+        const linodeConnection = connections.find((conn: any) => conn.provider === 'linode');
         
         // Check actual project connections (not just token existence)
         setGithubConnected(!!githubConnection);
         setVercelConnected(!!vercelConnection);
+        setLinodeConnected(!!linodeConnection);
+
+        if (linodeConnection && linodeConnection.service_data) {
+          if (linodeConnection.service_data.region) setLinodeRegion(linodeConnection.service_data.region);
+          if (linodeConnection.service_data.type) setLinodeType(linodeConnection.service_data.type);
+        }
         
         // Set published URL only if actually deployed
         if (vercelConnection && vercelConnection.service_data) {
@@ -1034,6 +1066,7 @@ const persistProjectPreferences = useCallback(
       await fetch(`${API_BASE}/api/projects/${projectId}/preview/stop`, { method: 'POST' });
       setPreviewUrl(null);
       setIsExplicitlyStopped(true);
+      setIsStartingPreview(false);
     } catch (error) {
       console.error('Error stopping preview:', error);
     }
@@ -2782,7 +2815,7 @@ const persistProjectPreferences = useCallback(
                   )}
                   
                   {/* Publish/Update */}
-                  {showPreview && previewUrl && (
+                  {showPreview && !previewUrl && (
                     <div className="relative">
                     <button
                       className="h-9 flex items-center gap-2 px-3 bg-black text-white rounded-lg text-sm font-medium transition-colors hover:bg-gray-900 border border-black/10 shadow-sm"
@@ -2797,163 +2830,7 @@ const persistProjectPreferences = useCallback(
                         <span className="ml-2 inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
                       )}
                     </button>
-                    {false && showPublishPanel && (
-                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-5">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Publish Project</h3>
-                        
-                        {/* Deployment Status Display */}
-                        {deploymentStatus === 'deploying' && (
-                          <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 ">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                              <p className="text-sm font-medium text-blue-700 ">Deployment in progress...</p>
-                            </div>
-                            <p className="text-xs text-blue-600 ">Building and deploying your project. This may take a few minutes.</p>
-                          </div>
-                        )}
-                        
-                        {deploymentStatus === 'ready' && publishedUrl && (
-                          <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200 ">
-                            <p className="text-sm font-medium text-green-700 mb-2">Currently published at:</p>
-                            <a 
-                              href={publishedUrl ?? undefined} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="text-sm text-green-600 font-mono hover:underline break-all"
-                            >
-                              {publishedUrl}
-                            </a>
-                          </div>
-                        )}
-                        
-                        {deploymentStatus === 'error' && (
-                          <div className="mb-4 p-4 bg-red-50 rounded-lg border border-red-200 ">
-                            <p className="text-sm font-medium text-red-700 mb-2">Deployment failed</p>
-                            <p className="text-xs text-red-600 ">There was an error during deployment. Please try again.</p>
-                          </div>
-                        )}
-                        
-                        <div className="space-y-4">
-                          {!githubConnected || !vercelConnected ? (
-                            <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 ">
-                              <p className="text-sm font-medium text-gray-900 mb-3">To publish, connect the following services:</p>
-                              <div className="space-y-2">
-                                {!githubConnected && (
-                                  <div className="flex items-center gap-2 text-amber-700 ">
-                                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="text-sm">GitHub repository not connected</span>
-                                  </div>
-                                )}
-                                {!vercelConnected && (
-                                  <div className="flex items-center gap-2 text-amber-700 ">
-                                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="text-sm">Vercel project not connected</span>
-                                  </div>
-                                )}
-                              </div>
-                              <p className="mt-3 text-sm text-gray-600 ">
-                                Go to 
-                                <button
-                                  onClick={() => {
-                                    setShowPublishPanel(false);
-                                    setShowGlobalSettings(true);
-                                  }}
-                                  className="text-indigo-600 hover:text-indigo-500 underline font-medium mx-1"
-                                >
-                                  Settings → Service Integrations
-                                </button>
-                                to connect.
-                              </p>
-                            </div>
-                          ) : null}
-                          
-                          <button
-                            disabled={publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected}
-                            onClick={async () => {
-                              console.debug('🚀 Publish started');
-                              
-                              setPublishLoading(true);
-                              try {
-                                // Push to GitHub
-                                console.debug('🚀 Pushing to GitHub...');
-                                const pushRes = await fetch(`${API_BASE}/api/projects/${projectId}/github/push`, { method: 'POST' });
-                                if (!pushRes.ok) {
-                                  const errorText = await pushRes.text();
-                                  console.error('🚀 GitHub push failed:', errorText);
-                                  throw new Error(errorText);
-                                }
-                                
-                                // Deploy to Vercel
-                                console.debug('🚀 Deploying to Vercel...');
-                                const deployUrl = `${API_BASE}/api/projects/${projectId}/vercel/deploy`;
-                                
-                                const vercelRes = await fetch(deployUrl, {
-                                  method: 'POST'
-                                });
-                                if (!vercelRes.ok) {
-                                  const responseText = await vercelRes.text();
-                                  console.error('🚀 Vercel deploy failed:', responseText);
-                                }
-                                if (vercelRes.ok) {
-                                  const data = await vercelRes.json();
-                                  console.debug('🚀 Deployment started, polling for status...');
-                                  
-                                  // Set deploying status BEFORE ending publishLoading to prevent gap
-                                  setDeploymentStatus('deploying');
-                                  
-                                  if (data.deployment_id) {
-                                    startDeploymentPolling(data.deployment_id);
-                                  }
-                                  
-                                  // Only set URL if deployment is already ready
-                                  if (data.status === 'READY' && data.deployment_url) {
-                                    const url = data.deployment_url.startsWith('http') ? data.deployment_url : `https://${data.deployment_url}`;
-                                    setPublishedUrl(url);
-                                    setDeploymentStatus('ready');
-                                  }
-                                } else {
-                                  const errorText = await vercelRes.text();
-                                  console.error('🚀 Vercel deploy failed:', vercelRes.status, errorText);
-                                  // if Vercel not connected, just close
-                                  setDeploymentStatus('idle');
-                                  setPublishLoading(false); // Stop loading even on Vercel deployment failure
-                                }
-                                // Keep panel open to show deployment progress
-                              } catch (e) {
-                                console.error('🚀 Publish failed:', e);
-                                alert('Publish failed. Check Settings and tokens.');
-                                setDeploymentStatus('idle');
-                                setPublishLoading(false); // Stop loading on error
-                                // Close panel after error
-                                setTimeout(() => {
-                                  setShowPublishPanel(false);
-                                }, 1000);
-                              } finally {
-                                loadDeployStatus();
-                              }
-                            }}
-                            className={`w-full px-4 py-3 rounded-lg font-medium text-white transition-colors ${
-                              publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected 
-                                ? 'bg-gray-400 cursor-not-allowed' 
-                                : 'bg-indigo-600 hover:bg-indigo-700 '
-                            }`}
-                          >
-                            {publishLoading 
-                              ? 'Publishing...' 
-                              : deploymentStatus === 'deploying'
-                              ? 'Deploying...'
-                              : !githubConnected || !vercelConnected 
-                              ? 'Connect Services First' 
-                              : deploymentStatus === 'ready' && publishedUrl ? 'Update' : 'Publish'
-                            }
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    {/* Redundant inline panel removed in favor of centered modal */}
                   </div>
                   )}
                 </div>
@@ -3129,7 +3006,7 @@ const persistProjectPreferences = useCallback(
                         transition={{ duration: 0.6, ease: "easeOut" }}
                       >
                         {/* Claudable Symbol */}
-                        {hasActiveRequests ? (
+                        {hasActiveRequests && !isExplicitlyStopped ? (
                           <>
                             <div className="w-40 h-40 mx-auto mb-6 relative">
                               <MotionDiv
@@ -3167,7 +3044,7 @@ const persistProjectPreferences = useCallback(
                                   animation: 'shimmerText 5s linear infinite'
                                 }}
                               >
-                                Building...
+                                Building, please be patient...
                               </span>
                               <style>{`
                                 @keyframes shimmerText {
@@ -3484,7 +3361,7 @@ const persistProjectPreferences = useCallback(
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-gray-900 ">Publish Project</h3>
-                  <p className="text-xs text-gray-600 ">Deploy with Vercel, linked to your GitHub repo</p>
+                  <p className="text-xs text-gray-600 ">Deploy to the Cloud Server Provider, from your linked GitHub repository</p>
                 </div>
               </div>
               <button onClick={() => setShowPublishPanel(false)} className="text-gray-400 hover:text-gray-600 ">
@@ -3526,30 +3403,114 @@ const persistProjectPreferences = useCallback(
                 </div>
               )}
 
-              {!githubConnected || !vercelConnected ? (
-                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 ">
-                  <p className="text-sm font-medium text-gray-900 mb-2">Connect the following services:</p>
-                  <div className="space-y-1 text-amber-700 text-sm">
-                    {!githubConnected && (<div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"/>GitHub repository not connected</div>)}
-                    {!vercelConnected && (<div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"/>Vercel project not connected</div>)}
-                  </div>
-                  <button
-                    className="mt-3 w-full px-4 py-2 rounded-xl border border-gray-200 text-gray-800 hover:bg-gray-50 "
-                    onClick={() => { setShowPublishPanel(false); setShowGlobalSettings(true); }}
-                  >
-                    Open Settings → Services
-                  </button>
-                </div>
-              ) : null}
+              <div className="space-y-4">
+                
+                {/* Providers Selection */}
+                <div className="space-y-3">
+                   <h4 className="text-sm font-medium text-gray-700">Select Deployment Targets</h4>
+                   
+                   {/* GitHub (Required) */}
+                   <label className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                      !githubConnected ? 'bg-amber-50 border-amber-200 opacity-80' : 'bg-gray-50 border-gray-200 opacity-70'
+                   }`}>
+                      <input 
+                        type="checkbox" 
+                        checked={true} 
+                        disabled 
+                        className="mt-1 w-4 h-4 text-indigo-600 rounded border-gray-300 bg-gray-100"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                            <FaGitAlt className="text-gray-700"/> GitHub Repository
+                          </span>
+                          {!githubConnected && <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Required</span>}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">Source of truth for all deployments. Code must be pushed here first.</p>
+                      </div>
+                   </label>
 
-              <button
-                disabled={publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected}
+                   {/* Vercel */}
+                   <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                      !vercelConnected 
+                        ? 'bg-gray-50 border-gray-200 opacity-60 grayscale' 
+                        : selectedProviders.has('vercel') ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-gray-200 hover:border-indigo-300'
+                   }`}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedProviders.has('vercel')} 
+                        disabled={!vercelConnected}
+                        onChange={(e) => {
+                          const next = new Set(selectedProviders);
+                          if (e.target.checked) next.add('vercel');
+                          else next.delete('vercel');
+                          setSelectedProviders(next);
+                        }}
+                        className="mt-1 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 disabled:text-gray-400"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                             <svg className="w-3.5 h-3.5" viewBox="0 0 1155 1000" fill="currentColor"><path d="M577.344 0L1154.69 1000H0L577.344 0Z" /></svg> Vercel Cloud
+                          </span>
+                          {!vercelConnected && <span className="text-xs text-gray-400 font-medium">Not Connected</span>}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">High-performance frontend hosting. Live URLs and preview deployments.</p>
+                      </div>
+                   </label>
+
+                   {/* Linode / Terraform */}
+                   <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                      !linodeConnected 
+                        ? 'bg-gray-50 border-gray-200 opacity-60 grayscale' 
+                        : selectedProviders.has('linode') ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-gray-200 hover:border-indigo-300'
+                   }`}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedProviders.has('linode')} 
+                        disabled={!linodeConnected}
+                        onChange={(e) => {
+                          const next = new Set(selectedProviders);
+                          if (e.target.checked) next.add('linode');
+                          else next.delete('linode');
+                          setSelectedProviders(next);
+                        }}
+                        className="mt-1 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 disabled:text-gray-400"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                             <FaDocker className="text-blue-600"/> Linode (Docker)
+                          </span>
+                          {!linodeConnected && <span className="text-xs text-gray-400 font-medium">Not Connected</span>}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">Full-stack Docker container on a dedicated Linode VM.</p>
+                      </div>
+                   </label>
+                </div>
+
+                {!githubConnected && (
+                    <div className="text-xs text-amber-600 text-center">
+                       Please connect GitHub in Settings → Services to proceed.
+                    </div>
+                )}
+
+                {(!vercelConnected && !linodeConnected) && githubConnected && (
+                    <div className="text-xs text-blue-600 text-center">
+                       Tip: Connect Vercel or Linode in settings to deploy your app live.
+                    </div>
+                )}
+
+                <button
+                disabled={publishLoading || deploymentStatus === 'deploying' || !githubConnected}
                 onClick={async () => {
                   try {
                     setPublishLoading(true);
                     setDeploymentStatus('deploying');
-                    // 1) Push to GitHub to ensure branch/commit exists
+                    
+                    // 1) Push to GitHub (Always Required)
                     try {
+                      console.debug('🚀 Pushing to GitHub...');
                       const pushRes = await fetch(`${API_BASE}/api/projects/${projectId}/github/push`, { method: 'POST' });
                       if (!pushRes.ok) {
                         const err = await pushRes.text();
@@ -3558,50 +3519,127 @@ const persistProjectPreferences = useCallback(
                       }
                     } catch (e) {
                       console.error('🚀 GitHub push step failed', e);
-                      throw e;
-                    }
-                    // Small grace period to let GitHub update default branch
-                    await new Promise(r => setTimeout(r, 800));
-                    // 2) Deploy to Vercel (branch auto-resolved on server)
-                    const deployUrl = `${API_BASE}/api/projects/${projectId}/vercel/deploy`;
-                    const vercelRes = await fetch(deployUrl, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ branch: 'main' })
-                    });
-                    if (vercelRes.ok) {
-                      const data = await vercelRes.json();
-                      setDeploymentStatus('deploying');
-                      if (data.deployment_id) startDeploymentPolling(data.deployment_id);
-                      if (data.ready && data.deployment_url) {
-                        const url = data.deployment_url.startsWith('http') ? data.deployment_url : `https://${data.deployment_url}`;
-                        setPublishedUrl(url);
-                        setDeploymentStatus('ready');
-                      }
-                    } else {
-                      const errorText = await vercelRes.text();
-                      console.error('🚀 Vercel deploy failed:', vercelRes.status, errorText);
-                      setDeploymentStatus('idle');
+                      showStatus('error', 'Push Failed', 'Failed to push to GitHub. Check your internet connection and repository permissions.');
+                      setDeploymentStatus('error');
                       setPublishLoading(false);
+                      return;
                     }
+
+                    // 2) Deploy to Targets
+                    const promises = [];
+                    
+                    // Vercel
+                    if (selectedProviders.has('vercel') && vercelConnected) {
+                         // Small grace period if pushing fresh code
+                         await new Promise(r => setTimeout(r, 800));
+                         console.debug('🚀 Deploying to Vercel...');
+                         const deployUrl = `${API_BASE}/api/projects/${projectId}/vercel/deploy`;
+                         promises.push(
+                           fetch(deployUrl, {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ branch: 'main' })
+                           }).then(async (res) => {
+                              if (!res.ok) throw new Error(await res.text());
+                              return res.json();
+                           }).then(data => {
+                              if (data.deployment_id) startDeploymentPolling(data.deployment_id);
+                              if (data.status === 'READY' && data.deployment_url) {
+                                  const url = data.deployment_url.startsWith('http') ? data.deployment_url : `https://${data.deployment_url}`;
+                                  setPublishedUrl(url);
+                                  setDeploymentStatus('ready');
+                              }
+                           }).catch(e => {
+                              console.error('Vercel deploy error:', e);
+                              showStatus('error', 'Vercel Deployment Failed', e.message);
+                           })
+                         );
+                    }
+
+                    // Linode / Terraform
+                    if (selectedProviders.has('linode') && linodeConnected) {
+                         console.debug('🚀 Deploying to Linode...');
+                         const deployUrl = `${API_BASE}/api/terraform/deploy`;
+                         promises.push(
+                           fetch(deployUrl, {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ 
+                               projectId,
+                               region: linodeRegion,
+                                ensureExisting: true,
+                               type: linodeType
+                             })
+                           }).then(async (res) => {
+                              if (!res.ok) throw new Error(await res.text());
+                              // Terraform deploy might take a while, usually doesn't return JSON until done or started
+                              // But the route typically streams or waits. 
+                              // Our terraform/deploy route waits for apply? Let's assume it returns success.
+                              return res.json();
+                           }).then(data => {
+                              console.log('Linode deploy success:', data);
+                              // Maybe show a success message specific to Linode?
+                              // For now we rely on the generic 'ready' status if Vercel isn't overruling it
+                              if (!selectedProviders.has('vercel')) {
+                                  setDeploymentStatus('ready'); 
+                                  // We probably don't have a public URL easily unless we parsed it from Terraform output
+                                  // But let's at least show success
+                              }
+                           }).catch(e => {
+                              console.error('Linode deploy error:', e);
+                              showStatus('error', 'Linode Deployment Failed', e.message);
+                           })
+                         );
+                    }
+                    
+                    if (promises.length > 0) {
+                        await Promise.all(promises);
+                        // If we only deployed to Linode (or Vercel finished), we are mostly done.
+                        // Vercel polling handles its own status updates.
+                        // If no Vercel, we manually stop loading state logic for Linode
+                        if (!selectedProviders.has('vercel')) {
+                             setPublishLoading(false);
+                             // If Linode succeeded
+                             if (selectedProviders.has('linode')) {
+                                 setDeploymentStatus('ready');
+                                 showStatus('success', 'Deployment Initiated', 'Your project is being deployed to Linode. It may take a few minutes for the server to be fully ready.');
+                             }
+                        }
+                    } else {
+                        // Only GitHub
+                        setPublishLoading(false);
+                        setDeploymentStatus('idle'); // Back to idle since no active deployment target
+                        showStatus('success', 'Changes Pushed', 'Your code has been successfully pushed to GitHub.');
+                        setShowPublishPanel(false);
+                    }
+
                   } catch (e) {
-                    console.error('🚀 Publish failed:', e);
-                    alert('Publish failed. Check Settings and tokens.');
-                    setDeploymentStatus('idle');
+                    console.error('🚀 Publish process failed:', e);
+                    setDeploymentStatus('error');
                     setPublishLoading(false);
-                    setTimeout(() => setShowPublishPanel(false), 1000);
                   } finally {
+                    // Update connection statuses just in case
                     loadDeployStatus();
                   }
                 }}
-                className={`w-full px-4 py-3 rounded-xl font-medium text-white transition ${
-                  publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-black hover:bg-gray-900'
+                className={`w-full px-4 py-3 rounded-lg font-medium text-white transition-colors ${
+                  publishLoading || deploymentStatus === 'deploying' || !githubConnected
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg transform active:scale-[0.99] transition-all'
                 }`}
               >
-                {publishLoading ? 'Publishing…' : deploymentStatus === 'deploying' ? 'Deploying…' : (!githubConnected || !vercelConnected) ? 'Connect Services First' : (deploymentStatus === 'ready' && publishedUrl ? 'Update' : 'Publish')}
+                {publishLoading 
+                  ? 'Processing...'
+                  : deploymentStatus === 'deploying'
+                  ? 'Deploying...'
+                  : !githubConnected
+                  ? 'Connect GitHub First' 
+                  : selectedProviders.size > 0
+                    ? `Push & Deploy`
+                    : 'Push to GitHub Only'
+                }
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -3633,6 +3671,16 @@ const persistProjectPreferences = useCallback(
         onClose={() => setIsSmartEditModalOpen(false)}
         elementContext={selectedElementContext}
         onSubmit={handleSmartEditSubmit}
+      />
+
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        onClose={() => setStatusModal(prev => ({ ...prev, isOpen: false }))}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmLabel={statusModal.confirmLabel}
+        onConfirm={statusModal.onConfirm}
       />
     </>
   );

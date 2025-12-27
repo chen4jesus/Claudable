@@ -4,12 +4,14 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaCog, FaRobot, FaLock, FaPlug } from 'react-icons/fa';
+import { Database } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import { GeneralSettings } from './GeneralSettings';
 import { AIAssistantSettings } from './AIAssistantSettings';
 import { EnvironmentSettings } from './EnvironmentSettings';
 import { ServiceSettings } from './ServiceSettings';
 import GlobalSettings from './GlobalSettings';
+import { TerraformSettings } from './TerraformSettings';
 
 interface ProjectSettingsProps {
   isOpen: boolean;
@@ -21,7 +23,7 @@ interface ProjectSettingsProps {
   onProjectUpdated?: (update: { name: string; description?: string | null }) => void;
 }
 
-type SettingsTab = 'general' | 'ai-assistant' | 'environment' | 'services';
+type SettingsTab = 'general' | 'ai-assistant' | 'environment' | 'services' | 'infrastructure';
 
 export function ProjectSettings({
   isOpen,
@@ -57,6 +59,11 @@ export function ProjectSettings({
           id: 'services' as SettingsTab,
           label: 'Services',
           icon: <span className="w-4 h-4 inline-flex"><FaPlug /></span>,
+        },
+        {
+          id: 'infrastructure' as SettingsTab,
+          label: 'Infrastructure',
+          icon: <span className="w-4 h-4 inline-flex"><Database className="w-4 h-4" /></span>,
         },
       ].filter(tab => !('hidden' in tab) || !tab.hidden),
     [isProjectScoped]
@@ -148,6 +155,10 @@ export function ProjectSettings({
                 onClose(); // Close current modal
               }}
             />
+          )}
+
+          {activeTab === 'infrastructure' && (
+            <TerraformSettings projectId={projectId} />
           )}
         </div>
       </div>

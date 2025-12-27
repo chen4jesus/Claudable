@@ -7,8 +7,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 interface ServiceConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  provider: 'github' | 'supabase' | 'vercel';
-  projectId?: string;
+  provider: 'github' | 'supabase' | 'vercel' | 'linode';
+  projectId?: string; // Optional context for project-specific actions
 }
 
 interface ServiceToken {
@@ -292,6 +292,28 @@ export default function ServiceConnectionModal({
             "Paste the token below and click 'Save Token'"
           ],
           actions: ['deploy']
+        };
+      case 'linode':
+        return {
+          title: 'Linode',
+          description: 'Connect with your Linode API Token to deploy infrastructure.',
+          tokenUrl: 'https://cloud.linode.com/profile/tokens',
+          tokenName: 'API Token',
+          icon: (
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.3 2.15c-.17-.11-.38-.11-.55 0L6.46 5.38 2.05 8.1c-.17.11-.27.29-.27.49v6.82l.01 4.5c0 .2.11.38.28.49l7.75 4.75c.08.05.17.08.26.08.09 0 .18-.03.26-.08l7.75-4.75c.17-.11.27-.29.27-.49v-4.5l.01-6.82c0-.2-.1-.38-.27-.49L12.3 2.15zM12 18.35l-5.63-3.45V8l5.63 3.45 5.63-3.45v6.9L12 18.35z" fill="currentColor"/>
+            </svg>
+          ),
+          instructions: [
+            "Go to Linode Cloud Manager → Profile → API Tokens",
+            "Click 'Create a Personal Access Token'",
+            "Enter a label (e.g., 'Clovable Integration')",
+            "Select expiry",
+            "Select scopes: 'Linodes: Read/Write'",
+            "Click 'Create Token' and copy the token",
+            "Paste the token below and click 'Save Token'"
+          ],
+          actions: []
         };
     }
   };

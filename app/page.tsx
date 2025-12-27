@@ -158,10 +158,13 @@ export default function HomePage() {
         setSelectedAssistant(storedAssistant);
         setSelectedModel(storedModel);
         setUsingGlobalDefaults(false);
-        setIsInitialLoad(false);
-        setLoadingStages(prev => ({ ...prev, settings: true }));
-        return;
+      } else {
+        // No stored selections, stick to global defaults
+        setUsingGlobalDefaults(true);
       }
+      setIsInitialLoad(false);
+      setLoadingStages(prev => ({ ...prev, settings: true }));
+      return;
     }
     
     // Fallback: don't set settings:true here either
@@ -174,17 +177,22 @@ export default function HomePage() {
   
   // Apply global settings when using defaults
   useEffect(() => {
-    if (globalSettingsLoading) return;
-    if (!usingGlobalDefaults || !isInitialLoad) return;
+    if (globalSettingsLoading || !globalSettings) return;
+    if (!usingGlobalDefaults) return;
     
-    const cli = sanitizeAssistant(globalSettings?.default_cli);
+    const cli = sanitizeAssistant(globalSettings.default_cli);
     setSelectedAssistant(cli);
-    const modelFromGlobal = globalSettings?.cli_settings?.[cli]?.model;
+    const modelFromGlobal = globalSettings.cli_settings?.[cli]?.model;
     setSelectedModel(normalizeModelForAssistant(cli, modelFromGlobal));
     
     // Mark settings as loaded only after applying them
-    setLoadingStages(prev => ({ ...prev, settings: true }));
-  }, [globalSettings, usingGlobalDefaults, isInitialLoad, sanitizeAssistant, normalizeModelForAssistant, globalSettingsLoading]);
+    // and ONLY if projects have already finished loading to maintain sequence
+    setLoadingStages(prev => {
+      if (prev.settings || !prev.projects) return prev;
+      return { ...prev, settings: true };
+    });
+    setIsInitialLoad(false);
+  }, [globalSettings, usingGlobalDefaults, sanitizeAssistant, normalizeModelForAssistant, globalSettingsLoading]);
   
   // Save selections to sessionStorage when they change
   useEffect(() => {
@@ -231,14 +239,47 @@ export default function HomePage() {
     fetchCliStatusSnapshot()
       .then((status) => {
         setCLIStatus(status);
-        setLoadingStages(prev => ({ ...prev, cli: true }));
+        // Only mark CLI as loaded if projects are also done
+        setLoadingStages(prev => {
+          if (!prev.projects) return prev;
+          return { ...prev, cli: true };
+        });
       })
       .catch((error) => {
         console.error('Failed to check CLI status:', error);
         setCLIStatus(createCliStatusFallback());
-        setLoadingStages(prev => ({ ...prev, cli: true }));
+        setLoadingStages(prev => {
+          if (!prev.projects) return prev;
+          return { ...prev, cli: true };
+        });
       });
   }, []);
+
+  // Waterfall effect: Ensure Config and AI stages flip to finished 
+  // if they were waiting for Projects to complete.
+  useEffect(() => {
+    if (!loadingStages.projects) return;
+
+    setLoadingStages(prev => {
+      let next = { ...prev };
+      let changed = false;
+
+      // Drop settings (Config) if global settings are ready
+      if (!prev.settings && !globalSettingsLoading && globalSettings) {
+        next.settings = true;
+        changed = true;
+      }
+
+      // Drop cli (AI) if cliStatus is no longer empty/checking
+      const isCliReady = Object.values(cliStatus).some(s => !s.checking);
+      if (!prev.cli && isCliReady) {
+        next.cli = true;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [loadingStages.projects, globalSettingsLoading, globalSettings, cliStatus]);
 
   // Click outside handler
   useEffect(() => {
@@ -1501,6 +1542,8 @@ export default function HomePage() {
           setShowCreate(false);
           setShowGlobalSettings(true);
         }}
+        initialCLI={selectedAssistant}
+        initialModel={selectedModel}
       />
       </div>
     </div>

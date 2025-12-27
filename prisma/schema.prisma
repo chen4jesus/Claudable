@@ -38,6 +38,7 @@ model Project {
   userRequests          UserRequest[]
 
   @@index([groupId])
+  @@index([lastActiveAt])
   @@map("projects")
 }
 
@@ -199,6 +200,7 @@ model User {
   @@map("users")
 }
 
+
 model Group {
   id          String    @id @default(cuid())
   name        String    @unique
@@ -209,4 +211,18 @@ model Group {
   users       User[]    @relation("UserGroups")
 
   @@map("groups")
+}
+
+model PromptInjection {
+  id             String   @id @default(cuid())
+  name           String
+  content        String
+  injectionPoint String   @map("injection_point") // e.g., INIT_PROMPT, CHAT_MESSAGE
+  templateType   String?  @map("template_type") // e.g., nextjs, flutter, or null for ALL
+  position       String   @default("BEFORE") // BEFORE, AFTER, REPLACE
+  isEnabled      Boolean  @default(true) @map("is_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("prompt_injections")
 }
