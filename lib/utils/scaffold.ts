@@ -277,7 +277,7 @@ body {
 `
   );
 
-  await writeInfrastructureFile(
+  await writeFileIfMissing(
     path.join(projectPath, 'scripts/run-dev.js'),
     `#!/usr/bin/env node
 
@@ -493,7 +493,7 @@ h1 {
   );
 
   // Universal serve script that detects build outputs and respects PORT
-  await writeInfrastructureFile(
+  await writeFileIfMissing(
     path.join(projectPath, 'scripts/serve.js'),
     `#!/usr/bin/env node
 
