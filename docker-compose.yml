@@ -25,6 +25,8 @@ services:
     # We do NOT expose port 3000 to host directly, only internal network
     expose:
       - "3000"
+    networks:
+      - caddy_net
   caddy:
     build:
       context: .
@@ -39,6 +41,12 @@ services:
       - ./certs:/etc/caddy/certs:ro
     depends_on:
       - app
+    networks:
+      - caddy_net
+
+networks:
+  caddy_net:
+    driver: bridge
 
 volumes:
   caddy_data:
