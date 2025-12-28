@@ -1345,22 +1345,9 @@ class PreviewManager {
       throw new Error('Project not found');
     }
 
-    const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
-    const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
-      ? path.resolve(PROJECTS_DIR)
-      : path.resolve(process.cwd(), PROJECTS_DIR);
-    
     const projectPath = project.repoPath
-      ? path.isAbsolute(project.repoPath) ? path.resolve(project.repoPath) : path.resolve(process.cwd(), project.repoPath)
-      : path.join(PROJECTS_DIR_ABSOLUTE, projectId);
-
-    const relativeToBase = path.relative(PROJECTS_DIR_ABSOLUTE, projectPath);
-    const isWithinBase = !relativeToBase.startsWith('..') && !path.isAbsolute(relativeToBase);
-    
-    if (!isWithinBase) {
-      // Security/Stability check: Never allow preview manager to operate on files outside the projects directory
-      throw new Error(`CRITICAL: Project path ${projectPath} is outside allowed PROJECTS_DIR ${PROJECTS_DIR_ABSOLUTE}. Refusing to start.`);
-    }
+      ? path.resolve(project.repoPath)
+      : path.join(process.cwd(), 'projects', projectId);
 
     await fs.mkdir(projectPath, { recursive: true });
 
@@ -1374,7 +1361,7 @@ class PreviewManager {
 
     console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);
     
-    const ip = getLocalIpAddress(); 
+    const ip = getLocalIpAddress(); // Use 0.0.0.0 instead of localhost to allow network access in Docker
     const initialUrl = `http://${ip}:${preferredPort}`;
 
     const env: NodeJS.ProcessEnv = {
@@ -1383,15 +1370,6 @@ class PreviewManager {
       WEB_PORT: String(preferredPort),
       NEXT_PUBLIC_APP_URL: initialUrl,
     };
-
-    // Filter out environment variables that could conflict with the child process.
-    // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes projects that expect their own DB.
-    // We clear these IMMEDIATELY for ALL project types to ensure isolation during all sub-tasks.
-    delete env.DATABASE_URL;
-    delete env.DATABASE_PRISMA_URL;
-    delete env.DATABASE_URL_NON_POOLING;
-    delete env.SHADOW_DATABASE_URL;
-    delete env.PRISMA_GENERATE_DATAPROXY;
 
     // Create Shadow Baselines (Original Source Snapshot)
     await this.createProjectBaselines(projectPath, (msg) => console.log(msg));
@@ -1544,10 +1522,18 @@ class PreviewManager {
     const effectiveType = project.templateType === 'git-import' 
       ? (project as any)._detectedType || 'custom'
       : project.templateType;
+
     const isFlaskProject = effectiveType === 'flask';
     const isStaticHtmlProject = effectiveType === 'static-html' ? true : await detectProjectType(projectPath) === 'static-html';
     // console.debug("++++++++++++++++++++++++++++++++++", await detectProjectType(projectPath));
-    // Environment variables already filtered at the start of method for maximum isolation
+    // Filter out environment variables that could conflict with the child process.
+    // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
+    if (isFlaskProject || isStaticHtmlProject) {
+      delete env.DATABASE_URL;
+      delete env.DATABASE_PRISMA_URL;
+      delete env.DATABASE_URL_NON_POOLING;
+      delete env.SHADOW_DATABASE_URL;
+    }
 
 
     // For Flask projects, ALWAYS use the preview manager's dynamically assigned port.
@@ -1649,7 +1635,7 @@ class PreviewManager {
         spawnOptions = {
           cwd: projectPath,
           env: {
-            ...env,
+            ...process.env,
             NODE_ENV: 'development',
           },
           shell: useShell, // Required on Windows to avoid EINVAL
@@ -1741,27 +1727,13 @@ class PreviewManager {
   public async stop(projectId: string): Promise<PreviewInfo> {
     const project = await getProjectById(projectId);
     if (project) {
-        const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
-        const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
-          ? path.resolve(PROJECTS_DIR)
-          : path.resolve(process.cwd(), PROJECTS_DIR);
-        
         const projectPath = project.repoPath
-          ? path.isAbsolute(project.repoPath) ? path.resolve(project.repoPath) : path.resolve(process.cwd(), project.repoPath)
-          : path.join(PROJECTS_DIR_ABSOLUTE, projectId);
-
-        const relativeToBase = path.relative(PROJECTS_DIR_ABSOLUTE, projectPath);
-        const isWithinBase = !relativeToBase.startsWith('..') && !path.isAbsolute(relativeToBase);
-        
-        if (!isWithinBase) {
-          console.error(`[PreviewManager] CRITICAL: Stop requested for project ${projectId} with path ${projectPath} outside allowed directory ${PROJECTS_DIR_ABSOLUTE}.`);
-          // We still proceed with process cleanup if possible, but skip file operations
-        } else {
-          try {
-              await this.cleanupSmartEditScript(projectPath, (msg) => console.log(`[PreviewManager] [Cleanup on Stop] ${msg}`));
-          } catch (e) {
-              console.warn('[PreviewManager] Failed to cleanup script on stop:', e);
-          }
+          ? path.resolve(project.repoPath)
+          : path.join(process.cwd(), 'projects', projectId);
+        try {
+            await this.cleanupSmartEditScript(projectPath, (msg) => console.log(`[PreviewManager] [Cleanup on Stop] ${msg}`));
+        } catch (e) {
+            console.warn('[PreviewManager] Failed to cleanup script on stop:', e);
         }
     }
 

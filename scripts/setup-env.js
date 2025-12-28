@@ -261,27 +261,18 @@ async function ensureEnvironment(options = {}) {
     webRangeEnd = webRangeStart;
   }
 
-  // If a port is explicitly provided via environment (e.g. in Docker), 
-  // we MUST stick to it to ensure consistency with reverse proxies like Caddy.
-  const envPort = parsePortValue(process.env.PORT) || parsePortValue(process.env.WEB_PORT);
-  let port;
-  if (envPort !== null) {
-    port = envPort;
-    console.log(`✅ Using environment-specified port ${port}.`);
-  } else {
-    port = await findAvailablePort(webRangeStart, webRangeEnd, preferredPort);
-    if (port !== preferredPort) {
-      console.log(
-        `⚠️  Port ${preferredPort} is busy. Switching to available port ${port} within ${webRangeStart}-${webRangeEnd}.`
-      );
-    } else {
-      console.log(
-        `✅ Using port ${port} (range ${webRangeStart}-${webRangeEnd}).`
-      );
-    }
-  }
-
+  const port = await findAvailablePort(webRangeStart, webRangeEnd, preferredPort);
   const url = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${port}`;
+
+  if (port !== preferredPort) {
+    console.log(
+      `⚠️  Port ${preferredPort} is busy. Switching to available port ${port} within ${webRangeStart}-${webRangeEnd}.`
+    );
+  } else {
+    console.log(
+      `✅ Using port ${port} (range ${webRangeStart}-${webRangeEnd}).`
+    );
+  }
 
   const envUpdates = {
     PORT: String(port),
