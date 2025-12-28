@@ -37,7 +37,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data        # 🔐 CERTS LIVE HERE
       - caddy_config:/config
-      - ./certs:/etc/caddy/certs:ro
+      - ./certs/origin.pem:/etc/caddy/certs/origin.pem:ro
+      - ./certs/origin.key:/etc/caddy/certs/origin.key:ro
     depends_on:
       - app
 
