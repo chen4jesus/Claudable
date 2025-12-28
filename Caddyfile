@@ -4,27 +4,30 @@
 
 # Match both the root domain AND all subdomains
 build.faithconnect.us, *.build.faithconnect.us {
-
-    # Use DNS challenge to get a Wildcard Cert (Requires CLOUDFLARE_API_TOKEN env var)
     tls {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
 
-    # 1. Handle Project Previews (Regex Match)
-    # Matches: p3000-anyname.build.faithconnect.us
+    # Handle Project Previews
     @preview {
         header_regexp preview_host Host ^p(\d+)-.+\.build\.faithconnect\.us$
     }
 
     handle @preview {
-        # Extract the port from the regex group (1)
-        reverse_proxy app:{re.preview_host.1}
+        reverse_proxy app:{re.preview_host.1} {
+            # CRITICAL FOR STREAMING:
+            header_up -Accept-Encoding
+            flush_interval -1
+        }
     }
 
-    # 2. Fallback (Main Site)
-    # Catches "build.faithconnect.us" OR any subdomain that didn't match the regex
+    # Fallback (Main Site)
     handle {
-        reverse_proxy app:3000
+        reverse_proxy app:3000 {
+            # CRITICAL FOR STREAMING:
+            header_up -Accept-Encoding
+            flush_interval -1
+        }
     }
 
     log {
