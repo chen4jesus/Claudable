@@ -1,28 +1,39 @@
 {
-    # Cloudflare terminates TLS
-    auto_https off
+    # We turn auto_https back on, but we provide our own certs
+    email faithconnect2020@gmail.com
 }
 
-# Main app + all preview subdomains
+# The site block handles both 80 and 443 automatically
 build.faithconnect.us, *.build.faithconnect.us {
+
+    tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 
     log {
         output file /data/access.log
     }
 
-    # Match preview hostnames like:
-    # p3001-projectId.build.faithconnect.us
+    # Match preview hostnames
     @preview {
         header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
     }
 
-    # Route preview traffic to dynamic port
+    # Handle Previews
     handle @preview {
-        reverse_proxy app:{re.host.1}
+        reverse_proxy app:{re.host.1} {
+            flush_interval -1
+            header_up -Accept-Encoding
+            request_buffers 0
+            response_buffers 0
+        }
     }
 
-    # Default app
+    # Default App
     handle {
-        reverse_proxy app:3000
+        reverse_proxy app:3000 {
+            flush_interval -1
+            header_up -Accept-Encoding
+            request_buffers 0
+            response_buffers 0
+        }
     }
 }
