@@ -24,6 +24,11 @@ build.faithconnect.us, *.build.faithconnect.us {
             header_up -Accept-Encoding
             request_buffers 0
             response_buffers 0
+            transport http {
+                versions 1.1
+                keepalive off
+                compression off
+            }
         }
     }
 
@@ -34,6 +39,11 @@ build.faithconnect.us, *.build.faithconnect.us {
             header_up -Accept-Encoding
             request_buffers 0
             response_buffers 0
+            transport http {
+                versions 1.1
+                keepalive off
+                compression off
+            }
         }
     }
 }
