@@ -35,7 +35,7 @@ services:
     volumes:
       - "443:443"
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./certs:/etc/caddy/certs # Mount your new certs
+      - caddy_certs:/certs # Mount your new certs
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
