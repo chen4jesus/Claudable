@@ -21,23 +21,23 @@ services:
     volumes:
       - ./data:/var/local/Claudable/data
       - ./prisma/data:/var/local/Claudable/prisma/data
-      # Mount projects directory so it persists
       - ./data/projects:/var/local/Claudable/data/projects
     # We do NOT expose port 3000 to host directly, only internal network
     expose:
       - "3000"
-
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     restart: unless-stopped
     ports:
       - "80:80"
-    volumes:
       - "443:443"
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_certs:/certs # Mount your new certs
-      - caddy_data:/data
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # 🔐 CERTS LIVE HERE
       - caddy_config:/config
+      - ./certs:/etc/caddy/certs:ro
     depends_on:
       - app
 
