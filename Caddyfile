@@ -1,29 +1,47 @@
 {
     # We turn auto_https back on, but we provide our own certs
     email faithconnect2020@gmail.com
+    # Trust Cloudflare and Docker internal networks
+    servers {
+        trusted_proxies static private_ranges 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+    }
 }
 
-# The site block handles both 80 and 443 automatically
-build.faithconnect.us, *.build.faithconnect.us {
-
+# Main Domain
+build.faithconnect.us {
     tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
-
     log {
         output file /data/access.log
     }
 
-    # Match preview hostnames
+    # Default App for main domain
+    reverse_proxy app:3000 {
+        flush_interval -1
+        header_up -Accept-Encoding
+        transport http {
+            versions 1.1
+            keepalive off
+            compression off
+        }
+    }
+}
+
+# Preview Subdomains (Wildcard)
+*.build.faithconnect.us {
+    tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+    log {
+        output file /data/access.log
+    }
+
+    # Extract port from subdomain p3100-...
     @preview {
         header_regexp host Host ^p(\d+)-.+\.build\.faithconnect\.us$
     }
 
-    # Handle Previews
     handle @preview {
         reverse_proxy app:{re.host.1} {
             flush_interval -1
             header_up -Accept-Encoding
-            request_buffers 0
-            response_buffers 0
             transport http {
                 versions 1.1
                 keepalive off
@@ -32,18 +50,8 @@ build.faithconnect.us, *.build.faithconnect.us {
         }
     }
 
-    # Default App
+    # Fallback for other subdomains (if any)
     handle {
-        reverse_proxy app:3000 {
-            flush_interval -1
-            header_up -Accept-Encoding
-            request_buffers 0
-            response_buffers 0
-            transport http {
-                versions 1.1
-                keepalive off
-                compression off
-            }
-        }
+        respond "Not Found" 404
     }
 }
