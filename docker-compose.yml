@@ -4,7 +4,6 @@ services:
   app:
     build:
       context: .
-      target: app
       args:
         - CLAUDE_PW=${CLAUDE_PW:-claude}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://build.faithconnect.us/}
@@ -31,12 +30,8 @@ services:
       - "3000"
 
   caddy:
-    build:
-      context: .
-      target: caddy
+    image: caddy:2-alpine
     restart: unless-stopped
-    environment:
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     ports:
       - "80:80"
       - "443:443"

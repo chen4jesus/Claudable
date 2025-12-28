@@ -1,19 +1,4 @@
-# --- Caddy Builder Stage ---
-FROM caddy:builder AS caddy-builder
-
-# Build Caddy with the Cloudflare DNS plugin
-RUN xcaddy build \
-    --with github.com/caddy-dns/cloudflare
-
-# --- Caddy Final Stage ---
-FROM caddy:latest AS caddy
-
-# Copy the custom binary over
-COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
-
-# --- Application Stage ---
-FROM ubuntu:22.04 AS app
-
+FROM ubuntu:22.04
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
