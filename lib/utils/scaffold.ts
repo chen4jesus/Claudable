@@ -13,12 +13,6 @@ async function writeFileIfMissing(filePath: string, contents: string) {
   await fs.writeFile(filePath, contents, 'utf8');
 }
 
-async function writeInfrastructureFile(filePath: string, contents: string) {
-  const dir = path.dirname(filePath);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(filePath, contents, 'utf8');
-}
-
 export async function scaffoldBasicNextApp(
   projectPath: string,
   projectId: string
