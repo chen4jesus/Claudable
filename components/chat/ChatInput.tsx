@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { SendHorizontal, MessageSquare, Image as ImageIcon, Wrench } from 'lucide-react';
+import { SendHorizontal, MessageSquare, Image as ImageIcon, Wrench, FileText } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { StatusModal, type ModalType } from '../modals/StatusModal';
 
@@ -256,10 +256,10 @@ export default function ChatInput({
         const file = files[i];
 
         // Check if file is an image
-        if (!file.type.startsWith('image/')) {
-          console.warn(`⚠️ Skipping non-image file: ${file.name}, type: ${file.type}`);
-          continue;
-        }
+        // if (!file.type.startsWith('image/')) {
+        //   console.warn(`⚠️ Skipping non-image file: ${file.name}, type: ${file.type}`);
+        //   continue;
+        // }
 
         console.debug(`📸 Uploading image ${i + 1}/${files.length}:`, file.name);
 
@@ -332,7 +332,7 @@ export default function ChatInput({
       const imageFiles: File[] = [];
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        if (item.type.startsWith('image/')) {
+        if (item.kind === 'file') {
           const file = item.getAsFile();
           if (file) {
             imageFiles.push(file);
@@ -446,8 +446,8 @@ export default function ChatInput({
         {/* Drag & Drop Overlay */}
         {isDragOver && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-blue-50 bg-opacity-95 rounded-2xl z-10 pointer-events-none">
-            <div className="text-blue-600 text-lg font-medium mb-2">Drop images here</div>
-            <div className="text-blue-500 text-sm">Drag and drop your image files</div>
+            <div className="text-blue-600 text-lg font-medium mb-2">Drop files here</div>
+            <div className="text-blue-500 text-sm">Drag and drop your files</div>
             <div className="mt-4">
               <svg className="w-12 h-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -473,7 +473,7 @@ export default function ChatInput({
               ) : (
                 <div
                   className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Upload images"
+                  title="Upload files"
                   onClick={() => {
                     console.debug('📸 Upload button clicked:', {
                       projectId,
@@ -493,7 +493,6 @@ export default function ChatInput({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
                     multiple
                     onChange={handleImageUpload}
                     disabled={isUploading || disabled}
@@ -569,10 +568,10 @@ export default function ChatInput({
               <div className="text-center">
                 <div className="text-2xl mb-2">📸</div>
                 <div className="text-sm font-medium text-blue-600 ">
-                  Drop images here
+                  Drop files here
                 </div>
                 <div className="text-xs text-blue-500 mt-1">
-                  Supports: JPG, PNG, GIF, WEBP
+                  Supports all file types
                 </div>
               </div>
             </div>
@@ -624,15 +623,21 @@ export default function ChatInput({
       {uploadedImages.length > 0 && (
         <div className="px-4 pb-3">
           <div className="flex flex-wrap gap-2">
-            {uploadedImages.map((image, index) => (
+            {uploadedImages.map((image, index) => {
+              const isImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(image.filename);
+              return (
               <div key={image.id} className="relative group">
-                <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-300">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image.url}
-                    alt={image.filename}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-300 flex items-center justify-center">
+                  {isImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={image.url}
+                      alt={image.filename}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <FileText className="w-8 h-8 text-gray-500" />
+                  )}
                 </div>
                 <button
                   type="button"
@@ -648,10 +653,10 @@ export default function ChatInput({
                   {image.filename}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
           <div className="mt-2 text-xs text-gray-500">
-            {uploadedImages.length} image{uploadedImages.length > 1 ? 's' : ''} uploaded • Ready to send
+            {uploadedImages.length} file{uploadedImages.length > 1 ? 's' : ''} uploaded • Ready to send
           </div>
         </div>
       )}

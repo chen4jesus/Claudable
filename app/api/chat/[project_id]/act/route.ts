@@ -248,7 +248,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const legacyBody = body as Record<string, unknown>;
     const projectRoot = resolveProjectRoot(project_id, project.repoPath);
     const rawInstruction = typeof body.instruction === 'string' ? body.instruction : '';
-    const instructionWithoutLegacyPaths = rawInstruction.replace(/\n*Image #\d+ path: [^\n]+/g, '').trim();
+    const instructionWithoutLegacyPaths = rawInstruction.replace(/\n*(Image|File) #\d+ path: [^\n]+/g, '').trim();
 
     const rawImages: RawImageAttachment[] = Array.isArray((body as Record<string, unknown>).images)
       ? ((body as Record<string, unknown>).images as RawImageAttachment[])
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       }
     }
 
-    const imageLines = processedImages.map((image, idx) => `Image #${idx + 1} path: ${image.path}`);
+    const imageLines = processedImages.map((image, idx) => `File #${idx + 1} path: ${image.path}`);
     let finalInstruction = [instructionWithoutLegacyPaths, imageLines.join('\n')]
       .filter((segment) => segment && segment.trim().length > 0)
       .join('\n\n')

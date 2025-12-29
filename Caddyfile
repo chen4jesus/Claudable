@@ -7,7 +7,12 @@
 build.faithconnect.us {
     tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
     log {
-        output file /data/access.log
+        output file /data/access.log {
+            roll_size 10MB
+            roll_keep 10
+            roll_keep_for 720h
+            compress
+        }
     }
 
     # Default App for main domain
@@ -26,7 +31,12 @@ build.faithconnect.us {
 *.build.faithconnect.us {
     tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
     log {
-        output file /data/access.log
+        output file /data/access.log {
+            roll_size 10MB
+            roll_keep 10
+            roll_keep_for 720h
+            compress
+        }
     }
 
     # Extract port from subdomain p3100-...

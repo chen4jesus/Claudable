@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { ElementContext } from '../../types/smart-edit';
 
 interface SmartEditModalProps {
@@ -10,7 +10,9 @@ interface SmartEditModalProps {
   projectId?: string;
 }
 
-export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, projectId }: SmartEditModalProps) {
+export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, projectId: propProjectId }: SmartEditModalProps) {
+  const params = useParams();
+  const projectId = propProjectId || (params?.project_id as string);
   const [prompt, setPrompt] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
