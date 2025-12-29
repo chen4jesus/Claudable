@@ -228,6 +228,8 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
       }
 
       setLogs(prev => prev + '\n' + (data.logs || 'Action initiated...'));
+      // Immediately fetch status to update UI and disable provision button
+      fetchStatus();
       // Status will stay 'deploying' and trigger polling
     } catch (error: any) {
       const errMsg = error.message || 'Deployment failed';
