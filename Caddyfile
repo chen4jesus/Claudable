@@ -11,7 +11,7 @@ build.faithconnect.us {
             roll_size 10MB
             roll_keep 10
             roll_keep_for 720h
-            compress
+            roll_gzip
         }
     }
 
@@ -35,7 +35,7 @@ build.faithconnect.us {
             roll_size 10MB
             roll_keep 10
             roll_keep_for 720h
-            compress
+            roll_gzip
         }
     }
 
