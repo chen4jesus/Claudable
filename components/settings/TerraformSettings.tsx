@@ -16,6 +16,8 @@ interface TerraformStatus {
         rootPass?: string;
         ip?: string;
         type: string;
+        cpu: number;
+        ram: number;
     };
 }
 
@@ -392,11 +394,11 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
               <div className="bg-slate-50/50 rounded-lg p-3 grid grid-cols-3 gap-3 border border-slate-100">
                 <div className="space-y-0.5">
                   <span className="text-[8px] font-black text-slate-400 uppercase leading-none">CPU</span>
-                  <div className="text-sm font-bold text-slate-700">1 Core</div>
+                  <div className="text-sm font-bold text-slate-700">{infraStatus.resourceInfo?.cpu} Core</div>
                 </div>
                 <div className="space-y-0.5 border-x border-slate-100 px-3">
                   <span className="text-[8px] font-black text-slate-400 uppercase leading-none">RAM</span>
-                  <div className="text-sm font-bold text-slate-700">2 GB</div>
+                  <div className="text-sm font-bold text-slate-700">{infraStatus.resourceInfo?.ram} GB</div>
                 </div>
                 <div className="space-y-0.5">
                   <span className="text-[8px] font-black text-slate-400 uppercase leading-none">TYPE</span>
