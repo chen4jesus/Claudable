@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, Trash2, RefreshCw, ExternalLink, Globe, Eye, EyeOff } from 'lucide-react';
+import { Upload, Trash2, RefreshCw, ExternalLink, Globe, Eye, EyeOff, Settings } from 'lucide-react';
 import { StatusModal, type ModalType } from '../modals/StatusModal';
+import { DockerEnvModal } from '../modals/DockerEnvModal';
 
 interface TerraformSettingsProps {
   projectId: string;
@@ -70,6 +71,11 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+  
+  // Docker environment variables modal
+  const [showEnvModal, setShowEnvModal] = useState(false);
+  const [envVarCount, setEnvVarCount] = useState(0);
+  const [hasEnvVars, setHasEnvVars] = useState(false);
 
   const handlePing = async (ip: string) => {
     setIsPinging(true);
@@ -174,6 +180,23 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
     loadSettings();
     fetchStatus();
     fetchLogs(); // Initial log load
+    
+    // Check if project has docker-compose environment variables
+    const checkDockerEnv = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/docker-env`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.exists && data.variables?.length > 0) {
+            setHasEnvVars(true);
+            setEnvVarCount(data.variables.length);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check docker env', err);
+      }
+    };
+    checkDockerEnv();
   }, [projectId, fetchStatus, fetchLogs]);
 
   const saveSettings = async (newRegion: string, newType: string, newDomain: string, newDomainEmail: string, newCfToken: string, newCfEmail: string) => {
@@ -669,6 +692,27 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
                </p>
              </div>
 
+             {/* Environment Variables Button */}
+             {hasEnvVars && (
+               <button
+                 onClick={() => setShowEnvModal(true)}
+                 disabled={isLoading || deploymentStatus === 'deploying'}
+                 className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                   isLoading || deploymentStatus === 'deploying'
+                     ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                     : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/50'
+                 }`}
+               >
+                 <Settings className="w-3.5 h-3.5" />
+                 Configure Environment Variables
+                 {envVarCount > 0 && (
+                   <span className="ml-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[8px]">
+                     {envVarCount}
+                   </span>
+                 )}
+               </button>
+             )}
+
              <button
               onClick={handleDeploy}
               disabled={isLoading || deploymentStatus === 'deploying'}
@@ -831,6 +875,16 @@ export function TerraformSettings({ projectId }: TerraformSettingsProps) {
           </div>
         </div>
       )}
+
+      {/* Docker Environment Variables Modal */}
+      <DockerEnvModal
+        isOpen={showEnvModal}
+        onClose={() => setShowEnvModal(false)}
+        projectId={projectId}
+        onSave={(vars) => {
+          setEnvVarCount(Object.keys(vars).filter(k => vars[k]).length);
+        }}
+      />
     </div>
   );
 }

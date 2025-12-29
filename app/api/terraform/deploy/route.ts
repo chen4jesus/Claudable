@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deployProject, TerraformConfig } from '@/lib/services/terraform';
 import { getPlainServiceToken } from '@/lib/services/tokens';
+import { getProjectService } from '@/lib/services/project-services';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,17 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Fetch saved docker-env variables
+    let customEnvVars: Record<string, string> = {};
+    try {
+      const dockerEnvService = await getProjectService(projectId, 'docker-env');
+      if (dockerEnvService?.serviceData) {
+        customEnvVars = (dockerEnvService.serviceData as any).variables || {};
+      }
+    } catch (e) {
+      console.warn('[API] Failed to fetch docker-env variables:', e);
+    }
+
     const config: TerraformConfig = {
       projectId,
       region,
@@ -34,10 +46,11 @@ export async function POST(request: NextRequest) {
       domainName: body.domainName,
       domainEmail: body.domainEmail,
       cloudflareToken: body.cloudflareToken,
-      cloudflareEmail: body.cloudflareEmail
+      cloudflareEmail: body.cloudflareEmail,
+      customEnvVars
     };
 
-    console.log(`[API] Deploy Config: Domain=${config.domainName}, DomainEmail=${config.domainEmail}, CFEmail=${config.cloudflareEmail}`);
+    console.log(`[API] Deploy Config: Domain=${config.domainName}, DomainEmail=${config.domainEmail}, CFEmail=${config.cloudflareEmail}, CustomEnvVars=${Object.keys(customEnvVars).length}`);
 
     // Trigger deployment in background
     const result = await deployProject(config);
@@ -58,3 +71,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

@@ -46,6 +46,7 @@ export interface TerraformConfig {
   domainEmail?: string;
   cloudflareToken?: string;
   cloudflareEmail?: string;
+  customEnvVars?: Record<string, string>; // Custom environment variables from docker-compose
 }
 
 export interface TerraformState {
@@ -59,8 +60,16 @@ export interface TerraformState {
       type: string;
       status: string; // from provider
       rootPass?: string;
+      cpu?: number;
+      ram?: number;
   };
 }
+
+const INSTANCE_SPECS: Record<string, { cpu: number; ram: number }> = {
+  'g6-nanode-1': { cpu: 1, ram: 1 },
+  'g6-standard-1': { cpu: 1, ram: 2 },
+  'g6-standard-2': { cpu: 2, ram: 4 },
+};
 
 // Simple in-memory state for tracking background operations
 const activeOperations = new Map<string, 'deploying' | 'destroying'>();
@@ -106,7 +115,9 @@ export async function getProjectStatus(projectId: string): Promise<TerraformStat
                     region: instance.region,
                     type: instance.type,
                     status: instance.status,
-                    rootPass: rootPass
+                    rootPass: rootPass,
+                    cpu: INSTANCE_SPECS[instance.type]?.cpu || 1,
+                    ram: INSTANCE_SPECS[instance.type]?.ram || 1
                 }
             };
         }
@@ -150,27 +161,58 @@ function generateSecurePassword(): string {
   return retVal + "Ab1!"; 
 }
 
-function generateLinqodeConfig(config: TerraformConfig, port: number = 3000): string {
-  const deployId = Date.now().toString();
+/**
+ * Generate shell commands to create .env file with all environment variables
+ */
+function generateEnvFileCommands(config: TerraformConfig): string {
+  const envLines: string[] = [];
+  
+  // Add infrastructure variables (DOMAIN_NAME, ACME_EMAIL)
+  if (config.domainName) {
+    envLines.push(`DOMAIN_NAME=${config.domainName}`);
+  }
   
   const safeDomainEmail = config.domainEmail ? config.domainEmail.trim().replace(/['"\\s]/g, '') : '';
   const safeCfEmail = config.cloudflareEmail ? config.cloudflareEmail.trim().replace(/['"\\s]/g, '') : '';
   const effectiveEmail = safeDomainEmail || safeCfEmail;
-  
-  let envDomainCmd: string;
-  if (config.domainName) {
-    envDomainCmd = `"echo 'DOMAIN_NAME=${config.domainName}' > .env"`;
-  } else {
-    envDomainCmd = `"echo DOMAIN_NAME=\${linode_instance.web.ip_address} > .env"`;
-  }
-  
-  let envEmailCmd: string;
   if (effectiveEmail) {
-    envEmailCmd = `"echo 'ACME_EMAIL=${effectiveEmail}' >> .env"`;
-  } else {
-    envEmailCmd = `"echo '# No ACME_EMAIL provided' >> .env"`;
+    envLines.push(`ACME_EMAIL=${effectiveEmail}`);
   }
+  
+  // Add custom environment variables from docker-compose
+  if (config.customEnvVars) {
+    for (const [key, value] of Object.entries(config.customEnvVars)) {
+      // Skip DOMAIN_NAME and ACME_EMAIL if already set above
+      if (key === 'DOMAIN_NAME' || key === 'ACME_EMAIL') continue;
+      // Escape single quotes in values
+      const safeValue = value.replace(/'/g, "'\\''");
+      envLines.push(`${key}=${safeValue}`);
+    }
+  }
+  
+  // Generate shell commands
+  const commands: string[] = [];
+  if (envLines.length === 0) {
+    commands.push(`"echo '# No environment variables configured' > .env"`);
+  } else {
+    // First line uses > to create/overwrite, rest use >> to append
+    commands.push(`"echo '${envLines[0]}' > .env"`);
+    for (let i = 1; i < envLines.length; i++) {
+      commands.push(`"echo '${envLines[i]}' >> .env"`);
+    }
+  }
+  
+  // Also add DOMAIN_NAME from instance IP if not provided
+  if (!config.domainName) {
+    commands.unshift(`"echo DOMAIN_NAME=` + '${linode_instance.web.ip_address}' + ` > .env"`);
+  }
+  
+  return commands.join(',\n      ');
+}
 
+function generateLinqodeConfig(config: TerraformConfig, port: number = 3000): string {
+  const deployId = Date.now().toString();
+  
   return `
 terraform {
   required_providers {
@@ -251,24 +293,20 @@ resource "null_resource" "app_deployment" {
       "apt-get update",
       "apt-get install -y curl git",
       "command -v docker >/dev/null 2>&1 || curl -fsSL https://get.docker.com | sh",
-      "apt-get install -y python3-pip",
       
       "cd /root",
-      "if [ -d /root/app ]; then echo 'Stopping existing services...'; cd /root/app; docker compose down || true; cd /root; fi",
+      "if [ -d /root/app ]; then echo 'Stopping existing services...'; cd /root/app; docker compose down --remove-orphans || true; cd /root; fi",
       "rm -rf app",
       "git clone ${config.repoUrl} app",
       
       "cd /root/app",
-      "echo 'Deploying with Docker Compose...'",
-      "docker rm -f app_container || true",
-      "docker volume rm app_caddy_data || true",
+      "echo 'Generating environment configuration...'",
+      ${generateEnvFileCommands(config)},
       
-      ${envDomainCmd},
-      ${envEmailCmd},
-      "echo 'DEBUG: Generated .env contents:'",
-      "cat .env",
+      "echo 'Starting deployment with Docker Compose...'",
+      "docker compose up -d --build --remove-orphans",
       
-      "docker compose up -d --build --remove-orphans"
+      "echo 'Deployment complete.'"
     ]
   }
 }
