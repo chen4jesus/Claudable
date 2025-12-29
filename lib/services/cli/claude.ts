@@ -20,6 +20,8 @@ import {
   markUserRequestAsFailed,
 } from '@/lib/services/user-requests';
 import { getSystemPromptForProjectType } from '@/lib/constants/projectTypes';
+import { validateSafePath, createSecurityInterceptor } from '@/lib/services/security';
+import { loadGlobalSettings } from '@/lib/services/settings';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
 
@@ -679,28 +681,8 @@ export async function executeClaude(
     // Validate and prepare project path
     console.debug(`[ClaudeService] 🔒 Validating project path...`);
 
-    // Convert to absolute path
-    const absoluteProjectPath = path.isAbsolute(projectPath)
-      ? path.resolve(projectPath)
-      : path.resolve(process.cwd(), projectPath);
-
-    // Security: Verify project path is within allowed directory
-    const allowedBasePath = path.resolve(process.cwd(), process.env.PROJECTS_DIR || './data/projects');
-    const relativeToBase = path.relative(allowedBasePath, absoluteProjectPath);
-    const isWithinBase =
-      !relativeToBase.startsWith('..') && !path.isAbsolute(relativeToBase);
-    if (!isWithinBase) {
-      const errorMessage = `Security violation: Project path must be within ${allowedBasePath}. Got: ${absoluteProjectPath}`;
-      console.error(`[ClaudeService] ❌ ${errorMessage}`);
-
-      streamManager.publish(projectId, {
-        type: 'error',
-        error: errorMessage,
-        data: requestId ? { requestId } : undefined,
-      });
-
-      throw new Error(errorMessage);
-    }
+    // Convert to absolute path and validate security
+    const absoluteProjectPath = validateSafePath(projectPath, projectId);
 
     // Check project directory exists and create if needed
     try {
@@ -717,16 +699,23 @@ export async function executeClaude(
     // Start Claude Agent SDK query
     console.debug(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
     console.debug(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
+    const options = {
+      model: resolvedModel,
+      sessionId: sessionId,
+      maxOutputTokens: maxOutputTokens,
+    };
     const response = query({
       prompt: instruction,
       options: {
         cwd: absoluteProjectPath, // Work only in project folder (protects Claudable root)
         additionalDirectories: [absoluteProjectPath],
-        model: resolvedModel,
-        resume: sessionId, // Resume previous session
-        permissionMode: 'bypassPermissions', // Auto-approve commands and edits
+        model: options.model,
+        resume: options.sessionId,
+        maxOutputTokens: options.maxOutputTokens && Number.isFinite(options.maxOutputTokens) ? options.maxOutputTokens : 3200,
+        settingSources: ['user'],
+        permissionMode: 'bypassPermissions',
+        canUseTool: createSecurityInterceptor(projectId, [absoluteProjectPath]),
         systemPrompt: getSystemPromptForProjectType(projectType),
-        maxOutputTokens,
         // Capture SDK stderr so we can surface real errors instead of just exit code
         stderr: (data: string) => {
           const line = String(data).trimEnd();

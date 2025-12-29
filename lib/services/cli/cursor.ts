@@ -32,6 +32,7 @@ import {
   markUserRequestAsFailed,
 } from '@/lib/services/user-requests';
 import { serializeMessage, createRealtimeMessage } from '@/lib/serializers/chat';
+import { validateSafePath } from '@/lib/services/security';
 
 type CursorEvent = {
   type?: string;
@@ -82,17 +83,7 @@ async function ensureProjectPath(projectId: string, projectPath: string): Promis
     throw new Error(`Project not found: ${projectId}`);
   }
 
-  const absolute = path.isAbsolute(projectPath)
-    ? path.resolve(projectPath)
-    : path.resolve(process.cwd(), projectPath);
-
-  const allowedBasePath = path.resolve(process.cwd(), process.env.PROJECTS_DIR || './data/projects');
-  const relativeToBase = path.relative(allowedBasePath, absolute);
-  const isWithinBase = !relativeToBase.startsWith('..') && !path.isAbsolute(relativeToBase);
-
-  if (!isWithinBase) {
-    throw new Error(`Project path must be within ${allowedBasePath}. Got: ${absolute}`);
-  }
+  const absolute = validateSafePath(projectPath, projectId);
 
   try {
     await fs.access(absolute);

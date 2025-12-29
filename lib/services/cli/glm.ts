@@ -24,6 +24,7 @@ import {
   getGLMModelDisplayName,
   normalizeGLMModelId,
 } from '@/lib/constants/glmModels';
+import { validateSafePath, createSecurityInterceptor } from '@/lib/services/security';
 
 const GLM_ANTHROPIC_BASE_URL =
   process.env.GLM_ANTHROPIC_BASE_URL?.trim() || 'https://api.z.ai/api/anthropic';
@@ -57,15 +58,7 @@ async function ensureProjectPath(projectId: string, projectPath: string): Promis
     throw new Error(`Project not found: ${projectId}`);
   }
 
-  const absolute = path.isAbsolute(projectPath)
-    ? path.resolve(projectPath)
-    : path.resolve(process.cwd(), projectPath);
-  const allowedBasePath = path.resolve(process.cwd(), process.env.PROJECTS_DIR || './data/projects');
-  const relativeToBase = path.relative(allowedBasePath, absolute);
-  const isWithinBase = !relativeToBase.startsWith('..') && !path.isAbsolute(relativeToBase);
-  if (!isWithinBase) {
-    throw new Error(`Project path must be within ${allowedBasePath}. Got: ${absolute}`);
-  }
+  const absolute = validateSafePath(projectPath, projectId);
 
   try {
     await fs.access(absolute);
@@ -423,6 +416,7 @@ async function executeGLM(
         maxOutputTokens: Number.isFinite(maxOutputTokens) ? maxOutputTokens : 3200,
         settingSources: ['user'],
         permissionMode: 'bypassPermissions',
+        canUseTool: createSecurityInterceptor(projectId, [repoPath]),
         stderr: (data: string) => {
           const line = String(data).trimEnd();
           if (line) {

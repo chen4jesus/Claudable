@@ -423,8 +423,8 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
               {[
                 { id: 'general' as const, label: 'General' },
                 { id: 'account' as const, label: 'Account' },
-                { id: 'ai-agents' as const, label: 'AI Agents' },
-                { id: 'services' as const, label: 'Services' },
+                ...(currentUser?.role === 'admin' ? [{ id: 'ai-agents' as const, label: 'AI Agents' }] : []),
+                ...(currentUser?.role === 'admin' ? [{ id: 'services' as const, label: 'Services' }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users' as const, label: 'Users' }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'groups' as const, label: 'Groups' }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'prompt-injections' as const, label: 'Prompt Injections' }] : []),
@@ -478,7 +478,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
               </div>
             )}
 
-            {activeTab === 'ai-agents' && (
+            {activeTab === 'ai-agents' && currentUser?.role === 'admin' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -724,7 +724,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
               </div>
             )}
 
-            {activeTab === 'services' && (
+            {activeTab === 'services' && currentUser?.role === 'admin' && (
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Service Tokens</h3>
