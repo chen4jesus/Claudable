@@ -7,10 +7,13 @@ interface SmartEditModalProps {
   onClose: () => void;
   elementContext: ElementContext | null;
   onSubmit: (prompt: string, context: ElementContext) => void;
+  projectId?: string;
 }
 
-export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit }: SmartEditModalProps) {
+export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, projectId }: SmartEditModalProps) {
   const [prompt, setPrompt] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -22,6 +25,52 @@ export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit }: Sm
     if (prompt.trim() && elementContext) {
       onSubmit(prompt, elementContext);
       onClose();
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!projectId) {
+      alert('Project ID is missing. Cannot upload files.');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`/api/assets/${projectId}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Append relative path to prompt
+        const relativePath = `@/assets/${data.filename}`;
+        setPrompt(prev => {
+           const prefix = prev ? prev + ' ' : '';
+           return prefix + relativePath + ' ';
+        });
+      } else {
+        alert('Upload failed: ' + data.error);
+      }
+    } catch (error) {
+           console.error('File upload error:', error);
+           alert('Failed to upload file.');
+    } finally {
+      setIsUploading(false);
+      // Reset input so same file can be selected again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -107,25 +156,52 @@ export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit }: Sm
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!prompt.trim()}
-            className={`px-4 py-2 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2 ${
-                !prompt.trim() ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            <span>Submit Request</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+        <div className="p-6 border-t border-gray-200 flex justify-between gap-3 bg-gray-50 rounded-b-2xl">
+          <div className="flex items-center">
+             <input 
+               type="file" 
+               ref={fileInputRef}
+               className="hidden"
+               onChange={handleFileUpload}
+             />
+             <button
+               type="button"
+               onClick={() => fileInputRef.current?.click()}
+               disabled={isUploading || !projectId}
+               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                 isUploading ? 'text-gray-400 cursor-not-allowed' : 
+                 !projectId ? 'text-gray-300 cursor-not-allowed' :
+                 'text-gray-600 hover:bg-gray-200'
+               }`}
+               title={!projectId ? 'Project ID missing' : 'Upload file to prompt'}
+             >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {isUploading ? 'Uploading...' : 'Attach File'}
+             </button>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!prompt.trim()}
+              className={`px-4 py-2 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2 ${
+                  !prompt.trim() ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              <span>Submit Request</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -32,15 +32,16 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: 'File field is required' }, { status: 400 });
     }
 
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ success: false, error: 'File must be an image' }, { status: 400 });
-    }
+    // Allow all file types
+    // if (!file.type.startsWith('image/')) {
+    //   return NextResponse.json({ success: false, error: 'File must be an image' }, { status: 400 });
+    // }
 
     const projectAssetsPath = resolveAssetsPath(project_id);
     await fs.mkdir(projectAssetsPath, { recursive: true });
 
-    const originalName = file.name || 'image.png';
-    const extension = path.extname(originalName) || '.png';
+    const originalName = file.name || 'file';
+    const extension = path.extname(originalName);
     const uniqueName = `${uuidv4()}${extension}`;
     const absolutePath = path.join(projectAssetsPath, uniqueName);
     const resolvedAbsolutePath = path.resolve(absolutePath);
