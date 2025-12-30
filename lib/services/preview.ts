@@ -468,9 +468,6 @@ async function detectProjectType(projectPath: string): Promise<DetectedProjectTy
     if (deps['react'] && !deps['next']) {
       return 'react';
     }
-    
-    // Has package.json but no recognized framework - treat as custom (could be a generic node app)
-    return 'custom';
   }
 
   // 4. Check for index.html (Static HTML projects) - as a fallback
