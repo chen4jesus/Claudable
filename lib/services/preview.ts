@@ -1570,8 +1570,8 @@ class PreviewManager {
     // Use shell:true for static-html projects on Windows, false on other platforms, to ensure proper command resolution
     const useShell = (isFlaskProject || isFastAppProject) ? true : process.platform === 'win32';
     
-    let spawnCommand: string;
-    let spawnArgs: string[];
+    let spawnCommand = npmCommand;
+    let spawnArgs: string[] = [];
     
     if (isFlaskProject) {
        // Enforce dynamic port in source
