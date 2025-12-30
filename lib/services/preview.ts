@@ -1872,7 +1872,7 @@ class PreviewManager {
     
     // Also trigger global orphan cleanup to catch any persistent side-processes
     // This addresses the 'go back' cleanup requirement
-    this.killOrphanedPreviewProcesses().catch(err => 
+    killOrphanedPreviewProcesses().catch(err => 
       console.warn('[PreviewManager] Orphan cleanup on stop failed:', err)
     );
     await updateProject(projectId, {
