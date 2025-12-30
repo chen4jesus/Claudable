@@ -45,15 +45,23 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     // Determine project type for path mapping
     const isFlask = project.templateType === 'flask' || (project.templateType === 'git-import' && (await fs.access(path.join(projectRoot, 'wsgi.py')).then(() => true).catch(() => false)));
+    const isFastAPI = project.templateType === 'fastapp' || (project.templateType === 'git-import' && (await fs.access(path.join(projectRoot, 'main.py')).then(() => true).catch(() => false)));
 
     // Determine target directory (default: public/images or static/images for Flask)
-    let targetDir = targetPath || (isFlask ? 'app/static/images' : 'public/images');
+    let targetDir = targetPath || (isFlask ? 'app/static/images' : isFastAPI ? 'app/static/images' : 'public/images');
     
     // Clean up the target path
     targetDir = targetDir.replace(/\\/g, '/').replace(/^\.?\/?/, '').replace(/\/+$/, '');
     
     // If Flask, and it's trying to go to 'public', redirect to standard static
     if (isFlask && targetDir.startsWith('public')) {
+      const appStaticExists = await fs.access(path.join(projectRoot, 'app', 'static')).then(() => true).catch(() => false);
+      if (appStaticExists) {
+        targetDir = targetDir.replace(/^public/, 'app/static');
+      } else {
+        targetDir = targetDir.replace(/^public/, 'static');
+      }
+    } else if (isFastAPI && targetDir.startsWith('public')) {
       const appStaticExists = await fs.access(path.join(projectRoot, 'app', 'static')).then(() => true).catch(() => false);
       if (appStaticExists) {
         targetDir = targetDir.replace(/^public/, 'app/static');
@@ -89,6 +97,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     if (relativePath.startsWith('public/')) {
       urlPath = '/' + relativePath.substring(7); // Remove 'public/' prefix
     } else if (isFlask) {
+      if (relativePath.startsWith('app/static/')) {
+        urlPath = '/static/' + relativePath.substring(11);
+      } else if (relativePath.startsWith('static/')) {
+        urlPath = '/static/' + relativePath.substring(7);
+      }
+    } else if (isFastAPI) {
       if (relativePath.startsWith('app/static/')) {
         urlPath = '/static/' + relativePath.substring(11);
       } else if (relativePath.startsWith('static/')) {

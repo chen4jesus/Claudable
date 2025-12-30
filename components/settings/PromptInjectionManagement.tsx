@@ -28,6 +28,7 @@ const TEMPLATE_TYPES = [
   { id: 'react', name: 'React' },
   { id: 'vue', name: 'Vue' },
   { id: 'flask', name: 'Python Flask' },
+  { id: 'fastapp', name: 'FastAPI' },
   { id: 'custom', name: 'Custom' },
   { id: 'git-import', name: 'Git Import' },
 ];

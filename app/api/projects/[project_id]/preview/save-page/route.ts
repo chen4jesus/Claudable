@@ -19,7 +19,7 @@ interface SavePageBody {
   changes?: any[];
 }
 
-// Common template directories to search in for template-based projects (Flask, etc.)
+// Common template directories to search in for template-based projects (Flask, FastAPI, etc.)
 const TEMPLATE_DIRS = [
   'app/templates/pages',
   'app/templates',

@@ -585,6 +585,8 @@ export default function HomePage() {
       
       if (lowerPrompt.includes('flask') || lowerPrompt.includes('python') || lowerPrompt.includes('pip ')) {
         detectedTemplateType = 'flask';
+      } else if (lowerPrompt.includes('fastapi') || lowerPrompt.includes('python') || lowerPrompt.includes('pip ')) {
+        detectedTemplateType = 'fastapp';
       } else if (lowerPrompt.includes('vue')) {
         detectedTemplateType = 'vue';
       } else if (lowerPrompt.includes('static html') || lowerPrompt.includes('plain html') || lowerPrompt.includes('vanilla js') || lowerPrompt.includes('no framework')) {

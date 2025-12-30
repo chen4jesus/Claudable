@@ -185,6 +185,12 @@ export default function CreateProjectModal({
       return;
     }
 
+    // FastAPI / Python
+    if (lowerPrompt.includes('fastapi') || lowerPrompt.includes('python') || lowerPrompt.includes('pip ')) {
+      if (selectedProjectType !== 'fastapp') setSelectedProjectType('fastapp');
+      return;
+    }
+
     // Vue
     if (lowerPrompt.includes('vue')) {
       if (selectedProjectType !== 'vue') setSelectedProjectType('vue');

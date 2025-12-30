@@ -120,6 +120,7 @@ export default function ResourceManagementModal({ isOpen, onClose }: ResourceMan
       'react': 'React',
       'vue': 'Vue',
       'flask': 'Flask',
+      'fastapp': 'FastAPI',
       'static-html': 'Static HTML',
       'git-import': 'Git Import',
       'custom': 'Custom'

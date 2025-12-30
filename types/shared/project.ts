@@ -20,7 +20,7 @@ export type ProjectStatus =
   | 'active'
   | 'failed';
 
-export type TemplateType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask';
+export type TemplateType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask' | 'fastapp';
 
 /**
  * Service Connection Status

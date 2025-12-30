@@ -792,6 +792,13 @@ ${initialPrompt}
 
 Use Flask 3 with Python 3.x, and set up the basic project structure and implement the requested features.
 `.trim();
+  } else if (projectType === 'fastapp') {
+    fullPrompt = `
+Create a new FastAPI application with the following requirements:
+${initialPrompt}
+
+Use FastAPI 0.100.0 with Python 3.x, and set up the basic project structure and implement the requested features.
+`.trim();
   } else {
     // Default to Next.js
     fullPrompt = `

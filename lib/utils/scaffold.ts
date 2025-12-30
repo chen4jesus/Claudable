@@ -1815,4 +1815,411 @@ This directory stores files uploaded by users.
   );
 }
 
+export async function scaffoldFastApp(
+  projectPath: string,
+  projectId: string
+) {
+  await fs.mkdir(projectPath, { recursive: true });
+
+  // === APP DIRECTORY ===
+  const appDir = path.join(projectPath, 'app');
+  await fs.mkdir(appDir, { recursive: true });
+  await fs.mkdir(path.join(appDir, 'core'), { recursive: true });
+  await fs.mkdir(path.join(appDir, 'routes'), { recursive: true });
+  await fs.mkdir(path.join(appDir, 'templates'), { recursive: true });
+  await fs.mkdir(path.join(appDir, 'static'), { recursive: true });
+
+  // app/main.py
+  await writeFileIfMissing(
+    path.join(appDir, 'main.py'),
+    `from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import get_settings
+from app.core.database import init_db
+from app.routes import main as main_routes
+
+import os
+
+settings = get_settings()
+
+app = FastAPI(title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json")
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API Routes
+app.include_router(main_routes.router, prefix=settings.API_V1_STR)
+
+# Static Files
+# Serve 'public' directory as /static
+public_dir = os.path.join(os.path.dirname(__file__), '..', 'public')
+if not os.path.exists(public_dir):
+    os.makedirs(public_dir)
+
+app.mount("/static", StaticFiles(directory=public_dir), name="static")
+
+# Templates
+templates_dir = os.path.join(os.path.dirname(__file__), 'templates')
+templates = Jinja2Templates(directory=templates_dir)
+
+# Page Routes
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request, "title": "Home"})
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+`
+  );
+
+  // app/auth.py
+  await writeFileIfMissing(
+    path.join(appDir, 'auth.py'),
+    `from datetime import datetime, timedelta
+from typing import Optional, Union, Any
+from jose import jwt, JWTError
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlmodel import Session, select
+from app.core.config import get_settings
+from app.core.database import get_session
+# from app.models import User  # Uncomment when User model is ready
+
+settings = get_settings()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/login")
+
+def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    to_encode = {"exp": expire, "sub": str(subject)}
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+# Placeholder for user verification
+# def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)) -> User:
+#     ...
+`
+  );
+
+  // app/models.py
+  await writeFileIfMissing(
+    path.join(appDir, 'models.py'),
+    `from typing import Optional
+from datetime import datetime
+from sqlmodel import Field, SQLModel
+# from passlib.context import CryptContext
+
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(unique=True, index=True)
+    email: str = Field(unique=True, index=True)
+    password_hash: Optional[str] = None
+    is_admin: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # def set_password(self, password: str):
+    #     self.password_hash = pwd_context.hash(password)
+
+    # def check_password(self, password: str) -> bool:
+    #     if not self.password_hash:
+    #         return False
+    #     return pwd_context.verify(password, self.password_hash)
+`
+  );
+
+  // app/core/config.py
+  await writeFileIfMissing(
+    path.join(appDir, 'core/config.py'),
+    `import os
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+from typing import Optional
+
+class Settings(BaseSettings):
+    API_V1_STR: str = "/api/v1"
+    PROJECT_NAME: str = "${projectId}"
+    
+    # Security
+    SECRET_KEY: str = os.environ.get("SECRET_KEY", "your-super-secret-key-change-me")
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # Database
+    DATABASE_URL: Optional[str] = os.environ.get("DATABASE_URL")
+
+    class Config:
+        case_sensitive = True
+
+    @property
+    def assemble_db_connection(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        
+        # Local Development Fallback -> SQLite
+        import pathlib
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        instance_path = os.path.join(base_dir, 'instance')
+        os.makedirs(instance_path, exist_ok=True)
+        db_path = os.path.join(instance_path, 'app.db')
+        
+        if os.name == 'nt':
+             return 'sqlite:///' + str(db_path).replace('\\\\', '/')
+        else:
+             return 'sqlite:///' + str(db_path)
+
+@lru_cache()
+def get_settings():
+    return Settings()
+`
+  );
+
+  // app/core/database.py
+  await writeFileIfMissing(
+    path.join(appDir, 'core/database.py'),
+    `from sqlmodel import SQLModel, create_engine, Session
+from .config import get_settings
+
+settings = get_settings()
+
+connect_args = {"check_same_thread": False} if "sqlite" in settings.assemble_db_connection else {}
+
+engine = create_engine(
+    settings.assemble_db_connection, 
+    echo=False, 
+    connect_args=connect_args
+)
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+def init_db():
+    SQLModel.metadata.create_all(engine)
+`
+  );
+
+  // app/routes/main.py
+  await writeFileIfMissing(
+    path.join(appDir, 'routes/main.py'),
+    `from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import Session
+from app.core.database import get_session
+# from app.models import User
+from app.core.config import get_settings
+
+router = APIRouter()
+settings = get_settings()
+
+@router.get("/health")
+def health_check():
+    return {"status": "healthy", "project": settings.PROJECT_NAME}
+`
+  );
+
+  // app/routes/__init__.py
+  await writeFileIfMissing(
+    path.join(appDir, 'routes/__init__.py'),
+    ``
+  );
+  
+  // ROOT Files
+  
+  // requirements.txt
+  await writeFileIfMissing(
+    path.join(projectPath, 'requirements.txt'),
+    `fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+sqlmodel>=0.0.14
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart
+jinja2>=3.1.2
+pydantic-settings
+`
+  );
+
+  // package.json (scripts)
+  await writeFileIfMissing(
+    path.join(projectPath, 'package.json'),
+    JSON.stringify({
+      name: projectId,
+      version: "1.0.0",
+      description: "FastAPI Project",
+      scripts: {
+        dev: "uvicorn app.main:app --reload",
+        start: "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      },
+      keywords: [],
+      author: "",
+      license: "ISC"
+    }, null, 2) + "\n"
+  );
+  
+  // Dockerfile
+  await writeFileIfMissing(
+    path.join(projectPath, 'Dockerfile'),
+    `FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Start Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+`
+  );
+
+  // docker-compose.yml
+  await writeFileIfMissing(
+    path.join(projectPath, 'docker-compose.yml'),
+    `version: "3.8"
+
+services:
+  backend:
+    container_name: ${projectId}_backend
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////app/instance/app.db
+    volumes:
+      - ./instance:/app/instance
+      - ./public:/app/public
+    restart: unless-stopped
+
+  caddy:
+    container_name: ${projectId}_caddy
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN_NAME=\${DOMAIN_NAME:-localhost}
+      - DOMAIN_EMAIL=\${DOMAIN_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+`
+  );
+
+  // Caddyfile
+  await writeFileIfMissing(
+    path.join(projectPath, 'Caddyfile'),
+    `{
+    # Global options
+    email {$DOMAIN_EMAIL:admin@example.com}
+}
+
+{$DOMAIN_NAME:localhost} {
+    # Reverse proxy to the backend service
+    reverse_proxy backend:8000
+
+    # Compress responses
+    encode zstd gzip
+}
+`
+  );
+
+  // .env
+  await writeFileIfMissing(
+    path.join(projectPath, '.env'),
+    `SECRET_KEY=change-me
+DATABASE_URL=
+DOMAIN_NAME=localhost
+DOMAIN_EMAIL=admin@localhost
+`
+  );
+  
+  // .gitignore
+  await writeFileIfMissing(
+    path.join(projectPath, '.gitignore'),
+    `__pycache__/
+*.py[cod]
+*$py.class
+instance/
+.env
+.idea/
+.vscode/
+`
+  );
+  
+  // public/
+  const publicDir = path.join(projectPath, 'public');
+  await fs.mkdir(publicDir, { recursive: true });
+  
+  // templates/base.html
+  await writeFileIfMissing(
+    path.join(appDir, 'templates/base.html'),
+    `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FastAPI App{% endblock %}</title>
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/">Home</a>
+        </nav>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
+`
+  );
+  
+  // templates/index.html
+  await writeFileIfMissing(
+    path.join(appDir, 'templates/index.html'),
+    `{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<h1>Welcome to FastAPI</h1>
+<p>This is a scaffolded project.</p>
+{% endblock %}
+`
+  );
+}
+
 

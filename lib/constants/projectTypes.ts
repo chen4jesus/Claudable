@@ -3,7 +3,7 @@
  * Defines supported project types and their corresponding AI system prompts
  */
 
-export type ProjectType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask' | 'git-import';
+export type ProjectType = 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom' | 'flask' | 'fastapp' | 'git-import';
 
 export interface ProjectTypeOption {
   id: ProjectType;
@@ -41,6 +41,12 @@ export const PROJECT_TYPE_OPTIONS: ProjectTypeOption[] = [
     id: 'flask',
     name: 'Python Flask',
     description: 'Python 3.x web server with Flask',
+    icon: '🌶️',
+  },
+  {
+    id: 'fastapp',
+    name: 'Python FastAPI',
+    description: 'Python 3.x web server with FastAPI',
     icon: '🌶️',
   },
   {
@@ -143,7 +149,7 @@ export function getSystemPromptForProjectType(projectType?: string | null): stri
  */
 export function isValidProjectType(value: unknown): value is ProjectType {
   return typeof value === 'string' && 
-    ['nextjs', 'static-html', 'react', 'vue', 'custom', 'flask', 'git-import'].includes(value);
+    ['nextjs', 'static-html', 'react', 'vue', 'custom', 'flask', 'fastapp', 'git-import'].includes(value);
 }
 
 /**

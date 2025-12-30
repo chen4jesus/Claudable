@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import { findAvailablePort } from '@/lib/utils/ports';
 import { getProjectById, updateProject, updateProjectStatus } from './project';
-import { scaffoldBasicNextApp, scaffoldStaticHtmlApp, scaffoldFlaskApp } from '@/lib/utils/scaffold';
+import { scaffoldBasicNextApp, scaffoldStaticHtmlApp, scaffoldFlaskApp, scaffoldFastApp } from '@/lib/utils/scaffold';
 import { PREVIEW_CONFIG } from '@/lib/config/constants';
 import {
   cleanupSmartEditScript,
@@ -428,7 +428,7 @@ async function readPackageJson(
  * This is especially useful for git-imported projects where we need to determine
  * what kind of project was imported.
  */
-type DetectedProjectType = 'flask' | 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom';
+type DetectedProjectType = 'flask' | 'fastapp' | 'nextjs' | 'static-html' | 'react' | 'vue' | 'custom';
 
 async function detectProjectType(projectPath: string): Promise<DetectedProjectType> {
   // Check for Flask (Python) project
@@ -458,6 +458,9 @@ async function detectProjectType(projectPath: string): Promise<DetectedProjectTy
     const requirements = await fs.readFile(requirementsTxtPath, 'utf8');
     if (requirements.toLowerCase().includes('flask')) {
       return 'flask';
+    }
+    if (requirements.toLowerCase().includes('fastapi')) {
+      return 'fastapp';
     }
   } catch {
     // requirements.txt doesn't exist, continue checking
@@ -1257,11 +1260,17 @@ class PreviewManager {
           // Only scaffold if absolutely necessary (e.g. missing crucial files), but usually we respect the import
           // For now, ensuring port binding on the likely entry point
           await enforceFlaskPort(projectPath, 'wsgi.py', record);
+        } else if (detectedType === 'fastapp') {
+           record('Setting up FastApp project from git import...');
+           // FastApp usually runs via uvicorn from main:app, no special port enforcement on file needed if passing via CLI
         }
         // For other detected types, dependencies will be installed below
       } else if (project.templateType === 'static-html') {
         record(`Bootstrapping static HTML app for project ${projectId}`);
         await scaffoldStaticHtmlApp(projectPath, projectId);
+      } else if (project.templateType === 'fastapp') {
+        record(`Bootstrapping FastApp for project ${projectId}`);
+        await scaffoldFastApp(projectPath, projectId);
       } else if (project.templateType === 'flask') {
         record(`Bootstrapping Flask app for project ${projectId}`);
         await scaffoldFlaskApp(projectPath, projectId);
@@ -1292,14 +1301,14 @@ class PreviewManager {
               detectedType = await detectProjectType(projectPath);
             }
 
-            if (detectedType === 'flask') {
+           if (detectedType === 'fastapp') {
               const requirementsPath = path.join(projectPath, 'requirements.txt');
               if (await fileExists(requirementsPath)) {
-                record('Installing Python dependencies for Flask project...');
+                record('Installing Python dependencies for FastApp project...');
                 const pyCmd = await detectPythonCommand({ ...process.env });
                 await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, { ...process.env }, collectFromChunk, pyCmd);
               } else {
-                record('Flask project detected but requirements.txt missing. Skipping pip install.');
+                 record('FastApp project detected but requirements.txt missing. Skipping pip install.');
               }
             } else {
               await runInstallWithPreferredManager(
@@ -1415,6 +1424,8 @@ class PreviewManager {
             // If exists, ensure port binding is correct
             await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         }
+      } else if (project.templateType === 'fastapp') {
+        await fs.access(path.join(projectPath, 'requirements.txt'));
       } else {
         await fs.access(path.join(projectPath, 'package.json'));
       }
@@ -1450,6 +1461,13 @@ class PreviewManager {
              console.debug(`[PreviewManager] Internal flask check: found wsgi.py, skipping scaffold.`);
              await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
         }
+      } else if (project.templateType === 'fastapp') {
+         // Check if main.py exists
+         const mainExists = await fileExists(path.join(projectPath, 'app', 'main.py'));
+         if (!mainExists) {
+             console.debug(`[PreviewManager] Bootstrapping FastApp for project ${projectId}`);
+             await scaffoldFastApp(projectPath, projectId);
+         }
       } else {
         console.debug(
           `[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`
@@ -1472,6 +1490,15 @@ class PreviewManager {
              // Detect python command BEFORE install to ensure consistency
              const pyCmd = await detectPythonCommand(env);
              // Always run install to ensure deps are up to date (pip is fast if satisfied)
+             await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log, pyCmd);
+        }
+        return;
+      }
+
+      if (effectiveTypeBeforeInstall === 'fastapp') {
+        if (await fileExists(path.join(projectPath, 'requirements.txt'))) {
+             log(Buffer.from('[PreviewManager] Installing/Updating Python dependencies for FastApp...'));
+             const pyCmd = await detectPythonCommand(env);
              await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log, pyCmd);
         }
         return;
@@ -1523,12 +1550,14 @@ class PreviewManager {
       ? (project as any)._detectedType || 'custom'
       : project.templateType;
 
-    const isFlaskProject = effectiveType === 'flask';
-    const isStaticHtmlProject = effectiveType === 'static-html' ? true : await detectProjectType(projectPath) === 'static-html';
+    const detected = await detectProjectType(projectPath);
+    const isFlaskProject = effectiveType === 'flask' || detected === 'flask';
+    const isFastAppProject = effectiveType === 'fastapp' || detected === 'fastapp';
+    const isStaticHtmlProject = effectiveType === 'static-html' || detected === 'static-html';
     // console.debug("++++++++++++++++++++++++++++++++++", await detectProjectType(projectPath));
     // Filter out environment variables that could conflict with the child process.
     // Specifically, DATABASE_URL from Claudable's own Prisma setup crashes Flask-SQLAlchemy.
-    if (isFlaskProject || isStaticHtmlProject) {
+    if (isFlaskProject || isFastAppProject || isStaticHtmlProject) {
       delete env.DATABASE_URL;
       delete env.DATABASE_PRISMA_URL;
       delete env.DATABASE_URL_NON_POOLING;
@@ -1539,7 +1568,7 @@ class PreviewManager {
     // For Flask projects, ALWAYS use the preview manager's dynamically assigned port.
     // Do NOT use the project's .env PORT to avoid conflicts with Claudable's own port.
     // For Node.js projects, we can respect the project's port preference.
-    if (!isFlaskProject && overrides.port && overrides.port !== previewProcess.port) {
+    if (!isFlaskProject && !isFastAppProject && overrides.port && overrides.port !== previewProcess.port) {
       previewProcess.port = overrides.port;
       env.PORT = String(overrides.port);
       env.WEB_PORT = String(overrides.port);
@@ -1568,7 +1597,7 @@ class PreviewManager {
     }
 
     // For Flask, always use localhost URL; don't use project's NEXT_PUBLIC_APP_URL
-    if (!isFlaskProject && typeof overrides.url === 'string' && overrides.url.trim().length > 0) {
+    if (!isFlaskProject && !isFastAppProject && typeof overrides.url === 'string' && overrides.url.trim().length > 0) {
       resolvedUrl = overrides.url.trim();
     }
     env.NEXT_PUBLIC_APP_URL = resolvedUrl;
@@ -1576,13 +1605,14 @@ class PreviewManager {
 
     // isFlaskProject and effectiveType already determined above
     console.log('isFlaskProject???', isFlaskProject);
+    console.log('isFastAppProject???', isFastAppProject);
     console.log('isStaticHtmlProject???', isStaticHtmlProject);
     console.log('effectiveType???', effectiveType);
     let spawnOptions = {};
     
     // Use shell:true for Flask projects on all platforms for consistent behavior, Flask needs shell for proper Python command resolution on Linux
     // Use shell:true for static-html projects on Windows, false on other platforms, to ensure proper command resolution
-    const useShell = isFlaskProject ? true : process.platform === 'win32';
+    const useShell = (isFlaskProject || isFastAppProject) ? true : process.platform === 'win32';
     
     if (isFlaskProject) {
        // Enforce dynamic port in source
@@ -1604,6 +1634,20 @@ class PreviewManager {
          cwd: projectPath,
          env,
          detached: !isWindows, // Create new process group on Unix for tree termination
+         shell: useShell,
+         stdio: ['ignore', 'pipe', 'pipe'],
+       };
+    } else if (isFastAppProject) {
+       // FastApp (Uvicorn)
+       spawnCommand = await detectPythonCommand(env);
+       // Run module uvicorn directly
+       // Command: python -m uvicorn app.main:app --host 0.0.0.0 --port <PORT> --reload
+       spawnArgs = ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', String(effectivePortFinal), '--reload'];
+       
+       spawnOptions = {
+         cwd: projectPath,
+         env,
+         detached: !isWindows,
          shell: useShell,
          stdio: ['ignore', 'pipe', 'pipe'],
        };
