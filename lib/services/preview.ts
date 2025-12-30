@@ -1221,99 +1221,110 @@ class PreviewManager {
     await fs.mkdir(projectPath, { recursive: true });
 
     const logs: string[] = [];
-    const record = (message: string) => {
+    const record = (chunk: Buffer | string) => {
+      const message = chunk.toString();
       const formatted = `[PreviewManager] ${message}`;
-      console.debug(formatted);
-      logs.push(formatted);
+      if (message.includes('\n')) {
+        message.split('\n').filter(l => l.trim()).forEach(l => {
+          const f = `[PreviewManager] ${l}`;
+          console.debug(f);
+          logs.push(f);
+        });
+      } else if (message.trim()) {
+        console.debug(formatted);
+        logs.push(formatted);
+      }
     };
 
     await ensureProjectRootStructure(projectPath, record);
 
+    // 1. Determine effective project type early for scaffolding
+    let effectiveType: DetectedProjectType;
+    if (project.templateType === 'git-import' || !project.templateType) {
+      effectiveType = await detectProjectType(projectPath);
+      record(`Detected project type for ${project.templateType}: ${effectiveType}`);
+    } else {
+      effectiveType = project.templateType as DetectedProjectType;
+    }
+
+    // 2. Scaffolding / Setup based on effective type (if missing)
     try {
-      await fs.access(path.join(projectPath, 'package.json'));
-    } catch {
-      if (project.templateType === 'git-import') {
-        // Detect actual project type for git imports
-        const detectedType = await detectProjectType(projectPath);
-        record(`Git import detected. Detected project type: ${detectedType}`);
-        
-        // Handle Flask projects from git imports
-        if (detectedType === 'flask') {
-          record('Setting up Flask project from git import...');
-          // Only scaffold if absolutely necessary (e.g. missing crucial files), but usually we respect the import
-          // For now, ensuring port binding on the likely entry point
-          await enforceFlaskPort(projectPath, 'wsgi.py',
-            
-            record);
-        } else if (detectedType === 'fastapp') {
-           record('Setting up FastApp project from git import...');
-           // FastApp usually runs via uvicorn from main:app, no special port enforcement on file needed if passing via CLI
+      if (effectiveType === 'flask') {
+        const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
+        if (!wsgiExists) {
+          record('Scaffolding Flask project...');
+          await scaffoldFlaskApp(projectPath, projectId);
         }
-        // For other detected types, dependencies will be installed below
-      } else if (project.templateType === 'static-html') {
-        record(`Bootstrapping static HTML app for project ${projectId}`);
-        await scaffoldStaticHtmlApp(projectPath, projectId);
-      } else if (project.templateType === 'fastapp') {
-        record(`Bootstrapping FastApp for project ${projectId}`);
-        await scaffoldFastApp(projectPath, projectId);
-      } else if (project.templateType === 'flask') {
-        record(`Bootstrapping Flask app for project ${projectId}`);
-        await scaffoldFlaskApp(projectPath, projectId);
         await enforceFlaskPort(projectPath, 'wsgi.py', record);
-      } else {
-        record(`Bootstrapping minimal Next.js app for project ${projectId}`);
-        await scaffoldBasicNextApp(projectPath, projectId);
+      } else if (effectiveType === 'fastapp') {
+        const mainExists = await fileExists(path.join(projectPath, 'app', 'main.py'));
+        if (!mainExists) {
+          record('Scaffolding FastApp project...');
+          await scaffoldFastApp(projectPath, projectId);
+        }
+      } else if (effectiveType === 'static-html') {
+        const indexExists = await fileExists(path.join(projectPath, 'index.html'));
+        if (!indexExists) {
+          record('Scaffolding static HTML app...');
+          await scaffoldStaticHtmlApp(projectPath, projectId);
+        }
+      } else if (effectiveType === 'nextjs') {
+        const pkgExists = await fileExists(path.join(projectPath, 'package.json'));
+        if (!pkgExists) {
+          record('Scaffolding minimal Next.js app...');
+          await scaffoldBasicNextApp(projectPath, projectId);
+        }
+      }
+    } catch (e) {
+      record(`[Warning] Scaffolding error: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // 3. Robust dependency installation
+    await this.ensureDependenciesInternal(projectId, projectPath, effectiveType, { ...process.env }, record);
+
+    record('Dependency installation/update completed.');
+    return { logs };
+  }
+
+  private async ensureDependenciesInternal(
+    projectId: string,
+    projectPath: string,
+    effectiveType: DetectedProjectType,
+    env: NodeJS.ProcessEnv,
+    log: (chunk: Buffer | string) => void
+  ): Promise<void> {
+    // 1. Install Python dependencies if requirements.txt exists
+    // We check for both markers and the generic file to be ultra-robust
+    const requirementsExists = await fileExists(path.join(projectPath, 'requirements.txt'));
+    if (effectiveType === 'flask' || effectiveType === 'fastapp' || requirementsExists) {
+      if (requirementsExists) {
+        log(Buffer.from(`[PreviewManager] Installing/Updating Python dependencies for ${effectiveType}...`));
+        const pyCmd = await detectPythonCommand(env);
+        await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log, pyCmd);
       }
     }
 
-    const hadNodeModules = await directoryExists(path.join(projectPath, 'node_modules'));
+    // 2. Install Node dependencies if package.json exists
+    if (await fileExists(path.join(projectPath, 'package.json'))) {
+      const existingInstall = this.installing.get(projectId);
+      if (existingInstall) {
+        log(Buffer.from('[PreviewManager] Dependency installation already in progress (Concurrent Lock); waiting...'));
+        await existingInstall;
+        return;
+      }
 
-    const collectFromChunk = (chunk: Buffer | string) => {
-      chunk
-        .toString()
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .forEach((line) => record(line));
-    };
-
-    // Use a per-project lock to avoid concurrent install commands
-    const runInstall = async () => {
       const installPromise = (async () => {
         try {
-            // Detect project type for installation
-            let detectedType = project.templateType;
-            if (detectedType === 'git-import') {
-              detectedType = await detectProjectType(projectPath);
-            }
-
-            if (detectedType === 'flask') {
-              const requirementsPath = path.join(projectPath, 'requirements.txt');
-              if (await fileExists(requirementsPath)) {
-                record('Installing Python dependencies for Flask project...');
-                const pyCmd = await detectPythonCommand({ ...process.env });
-                await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, { ...process.env }, collectFromChunk, pyCmd);
-              } else {
-                record('Flask project detected but requirements.txt missing. Skipping pip install.');
-              }
-            } else if (detectedType === 'fastapp') {
-              const requirementsPath = path.join(projectPath, 'requirements.txt');
-              if (await fileExists(requirementsPath)) {
-                record('Installing Python dependencies for FastApp project...');
-                const pyCmd = await detectPythonCommand({ ...process.env });
-                await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, { ...process.env }, collectFromChunk, pyCmd);
-              } else {
-                 record('FastApp project detected but requirements.txt missing. Skipping pip install.');
-              }
-            } else {
-              await runInstallWithPreferredManager(
-                projectPath,
-                { ...process.env },
-                collectFromChunk
-              );
-            }
+          await runInstallWithPreferredManager(projectPath, env, log);
         } catch (error) {
-          record('Dependency installation failed. Cleaning up node_modules to allow retry.');
-          await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {});
+          log(Buffer.from('Dependency installation failed. Cleaning up node_modules and lockfiles to allow retry.'));
+          await Promise.all([
+            fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'package-lock.json'), { force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'yarn.lock'), { force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'pnpm-lock.yaml'), { force: true }).catch(() => {}),
+            fs.rm(path.join(projectPath, 'bun.lockb'), { force: true }).catch(() => {}),
+          ]);
           throw error;
         } finally {
           this.installing.delete(projectId);
@@ -1321,21 +1332,9 @@ class PreviewManager {
       })();
       this.installing.set(projectId, installPromise);
       await installPromise;
-    };
-
-    // If an install is already in progress, wait for it; otherwise start one
-    const existing = this.installing.get(projectId);
-    if (existing) {
-      record('Dependency installation already in progress; waiting for completion.');
-      await existing;
-    } else {
-      await runInstall();
     }
-
-    record('Dependency installation/update completed.');
-
-    return { logs };
   }
+
 
   public async start(projectId: string): Promise<PreviewInfo> {
     // 1. Check if already running
@@ -1448,31 +1447,31 @@ class PreviewManager {
     // Store detected type for use in spawn command selection (backwards compat)
     (project as any)._detectedType = effectiveType;
 
-    // 2. Scaffolding / Setup based on effective type
+    // 2. Scaffolding / Setup based on effective type (if missing)
     try {
       if (effectiveType === 'flask') {
         const wsgiExists = await fileExists(path.join(projectPath, 'wsgi.py'));
         if (!wsgiExists) {
-          console.debug(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`);
+          log(Buffer.from(`[PreviewManager] Bootstrapping Flask app for project ${projectId}`));
           await scaffoldFlaskApp(projectPath, projectId);
         }
         await enforceFlaskPort(projectPath, 'wsgi.py', (msg) => log(Buffer.from(`[PreviewManager] ${msg}`)));
       } else if (effectiveType === 'fastapp') {
         const mainExists = await fileExists(path.join(projectPath, 'app', 'main.py'));
         if (!mainExists) {
-          console.debug(`[PreviewManager] Bootstrapping FastApp for project ${projectId}`);
+          log(Buffer.from(`[PreviewManager] Bootstrapping FastApp for project ${projectId}`));
           await scaffoldFastApp(projectPath, projectId);
         }
       } else if (effectiveType === 'static-html') {
         const indexExists = await fileExists(path.join(projectPath, 'index.html'));
         if (!indexExists) {
-          console.debug(`[PreviewManager] Bootstrapping static HTML app for project ${projectId}`);
+          log(Buffer.from(`[PreviewManager] Bootstrapping static HTML app for project ${projectId}`));
           await scaffoldStaticHtmlApp(projectPath, projectId);
         }
       } else if (effectiveType === 'nextjs') {
         const pkgExists = await fileExists(path.join(projectPath, 'package.json'));
         if (!pkgExists) {
-          console.debug(`[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`);
+          log(Buffer.from(`[PreviewManager] Bootstrapping minimal Next.js app for project ${projectId}`));
           await scaffoldBasicNextApp(projectPath, projectId);
         }
       }
@@ -1482,44 +1481,7 @@ class PreviewManager {
 
     // 3. Ensure dependencies with the same per-project lock used by installDependencies
     const ensureWithLock = async () => {
-      // Install Python dependencies if requirements.txt exists
-      if (effectiveType === 'flask' || effectiveType === 'fastapp' || await fileExists(path.join(projectPath, 'requirements.txt'))) {
-        if (await fileExists(path.join(projectPath, 'requirements.txt'))) {
-          log(Buffer.from(`[PreviewManager] Installing/Updating Python dependencies for ${effectiveType}...`));
-          const pyCmd = await detectPythonCommand(env);
-          await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, env, log, pyCmd);
-        }
-      }
-
-      // Install Node dependencies if package.json exists
-      if (await fileExists(path.join(projectPath, 'package.json'))) {
-        const existingInstall = this.installing.get(projectId);
-        if (existingInstall) {
-          log(Buffer.from('[PreviewManager] Dependency installation already in progress; waiting...'));
-          await existingInstall;
-          return;
-        }
-
-        const installPromise = (async () => {
-          try {
-            await runInstallWithPreferredManager(projectPath, env, log);
-          } catch (error) {
-            log(Buffer.from('Dependency installation failed. Cleaning up node_modules and lockfiles to allow retry.'));
-            await Promise.all([
-              fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true }).catch(() => {}),
-              fs.rm(path.join(projectPath, 'package-lock.json'), { force: true }).catch(() => {}),
-              fs.rm(path.join(projectPath, 'yarn.lock'), { force: true }).catch(() => {}),
-              fs.rm(path.join(projectPath, 'pnpm-lock.yaml'), { force: true }).catch(() => {}),
-              fs.rm(path.join(projectPath, 'bun.lockb'), { force: true }).catch(() => {}),
-            ]);
-            throw error;
-          } finally {
-            this.installing.delete(projectId);
-          }
-        })();
-        this.installing.set(projectId, installPromise);
-        await installPromise;
-      }
+      await this.ensureDependenciesInternal(projectId, projectPath, effectiveType, env, log);
     };
 
     await ensureWithLock();
@@ -1764,11 +1726,15 @@ class PreviewManager {
       console.error(`[PreviewManager DEBUG] waitForPreviewReady failed: ${err}`);
     });
 
-    await updateProject(projectId, {
-      previewUrl: previewProcess.url,
-      previewPort: previewProcess.port,
-      status: 'running',
-    });
+    // Only set to running if the process is STILL considered healthy (not crashed/stopped during setup)
+    if (previewProcess.status === 'starting' || previewProcess.status === 'running') {
+      await updateProject(projectId, {
+        previewUrl: previewProcess.url,
+        previewPort: previewProcess.port,
+        status: 'running',
+      });
+      previewProcess.status = 'running';
+    }
 
     return this.toInfo(previewProcess);
   }
