@@ -1363,9 +1363,18 @@ class PreviewManager {
     const previewBounds = resolvePreviewBounds();
     console.info(`[PreviewManager] Preview port range: ${previewBounds.start}-${previewBounds.end} (PREVIEW_PORT_START=${process.env.PREVIEW_PORT_START || 'not set'})`);
     
+    // Collect ports that are currently known to be in use by other projects
+    const busyPorts: number[] = [];
+    for (const [pId, info] of this.processes.entries()) {
+      if (pId !== projectId && info.port) {
+        busyPorts.push(info.port);
+      }
+    }
+
     const preferredPort = await findAvailablePort(
       previewBounds.start,
-      previewBounds.end
+      previewBounds.end,
+      busyPorts
     );
 
     console.info(`[PreviewManager] Selected port ${preferredPort} for project ${projectId}`);

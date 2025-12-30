@@ -73,7 +73,8 @@ async function isPortAvailable(port: number): Promise<boolean> {
 
 export async function findAvailablePort(
   startPort?: number,
-  endPort?: number
+  endPort?: number,
+  excludePorts?: number[]
 ): Promise<number> {
   const { start: defaultStart, end: defaultEnd } = resolveDefaultBounds();
 
@@ -102,7 +103,12 @@ export async function findAvailablePort(
     );
   }
 
+  const excluded = new Set(excludePorts || []);
+
   for (let port = rangeStart; port <= rangeEnd; port += 1) {
+    if (excluded.has(port)) {
+      continue;
+    }
     // eslint-disable-next-line no-await-in-loop
     const available = await isPortAvailable(port);
     if (available) {
