@@ -1415,10 +1415,12 @@ class PreviewManager {
     // -------------------------------
 
     // 1. Determine effective project type early
-    let effectiveType: DetectedProjectType = project.templateType as DetectedProjectType;
-    if (effectiveType === 'git-import' || !effectiveType) {
+    let effectiveType: DetectedProjectType;
+    if (project.templateType === 'git-import' || !project.templateType) {
       effectiveType = await detectProjectType(projectPath);
-      console.debug(`[PreviewManager] Detected project type: ${effectiveType}`);
+      console.debug(`[PreviewManager] Detected project type for ${project.templateType}: ${effectiveType}`);
+    } else {
+      effectiveType = project.templateType as DetectedProjectType;
     }
     // Store detected type for use in spawn command selection (backwards compat)
     (project as any)._detectedType = effectiveType;
@@ -1567,6 +1569,9 @@ class PreviewManager {
     // Use shell:true for Flask projects on all platforms for consistent behavior, Flask needs shell for proper Python command resolution on Linux
     // Use shell:true for static-html projects on Windows, false on other platforms, to ensure proper command resolution
     const useShell = (isFlaskProject || isFastAppProject) ? true : process.platform === 'win32';
+    
+    let spawnCommand: string;
+    let spawnArgs: string[];
     
     if (isFlaskProject) {
        // Enforce dynamic port in source
