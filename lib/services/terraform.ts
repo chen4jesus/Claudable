@@ -167,21 +167,23 @@ function generateSecurePassword(): string {
 function generateEnvFileCommands(config: TerraformConfig): string {
   const envLines: string[] = [];
   
-  // Add infrastructure variables (DOMAIN_NAME, DOMAIN_EMAIL)
+  // Add infrastructure variables (DOMAIN_NAME, ACME_EMAIL)
   if (config.domainName) {
     envLines.push(`DOMAIN_NAME=${config.domainName}`);
   }
   
   const safeDomainEmail = config.domainEmail ? config.domainEmail.trim().replace(/['"\\s]/g, '') : '';
-  if (safeDomainEmail) {
-    envLines.push(`DOMAIN_EMAIL=${safeDomainEmail}`);
+  const safeCfEmail = config.cloudflareEmail ? config.cloudflareEmail.trim().replace(/['"\\s]/g, '') : '';
+  const effectiveEmail = safeDomainEmail || safeCfEmail;
+  if (effectiveEmail) {
+    envLines.push(`ACME_EMAIL=${effectiveEmail}`);
   }
   
   // Add custom environment variables from docker-compose
   if (config.customEnvVars) {
     for (const [key, value] of Object.entries(config.customEnvVars)) {
-      // Skip DOMAIN_NAME and DOMAIN_EMAIL if already set above
-      if (key === 'DOMAIN_NAME' || key === 'DOMAIN_EMAIL') continue;
+      // Skip DOMAIN_NAME and ACME_EMAIL if already set above
+      if (key === 'DOMAIN_NAME' || key === 'ACME_EMAIL') continue;
       // Escape single quotes in values
       const safeValue = value.replace(/'/g, "'\\''");
       envLines.push(`${key}=${safeValue}`);
