@@ -32,36 +32,36 @@ export function DockerEnvModal({ isOpen, onClose, projectId, onSave }: DockerEnv
 
   // Fetch environment variables when modal opens
   useEffect(() => {
+    const fetchVariables = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/docker-env`);
+        const data = await res.json();
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        setVariables(data.variables || []);
+        
+        // Initialize values with current or default values
+        const initialValues: Record<string, string> = {};
+        for (const v of data.variables || []) {
+          initialValues[v.name] = v.currentValue || v.defaultValue || '';
+        }
+        setValues(initialValues);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     if (isOpen && projectId) {
       fetchVariables();
     }
   }, [isOpen, projectId]);
-
-  const fetchVariables = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/docker-env`);
-      const data = await res.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      setVariables(data.variables || []);
-      
-      // Initialize values with current or default values
-      const initialValues: Record<string, string> = {};
-      for (const v of data.variables || []) {
-        initialValues[v.name] = v.currentValue || v.defaultValue || '';
-      }
-      setValues(initialValues);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSave = async () => {
     setIsSaving(true);

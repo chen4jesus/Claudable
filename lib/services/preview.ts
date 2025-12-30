@@ -1191,6 +1191,7 @@ export interface PreviewInfo {
 class PreviewManager {
   private processes = new Map<string, PreviewProcess>();
   private installing = new Map<string, Promise<void>>();
+  private starting = new Map<string, Promise<PreviewInfo>>();
 
   private getLogger(processInfo: PreviewProcess) {
     return (chunk: Buffer | string) => {
@@ -1337,11 +1338,33 @@ class PreviewManager {
   }
 
   public async start(projectId: string): Promise<PreviewInfo> {
+    // 1. Check if already running
     const existing = this.processes.get(projectId);
     if (existing && existing.status !== 'error') {
       return this.toInfo(existing);
     }
 
+    // 2. Check if already starting (concurrency lock)
+    const existingStart = this.starting.get(projectId);
+    if (existingStart) {
+      console.debug(`[PreviewManager] Start already in progress for ${projectId}, awaiting...`);
+      return await existingStart;
+    }
+
+    // 3. Create a promise for the start operation and store it in the map
+    const startPromise = (async () => {
+      try {
+        return await this.performStart(projectId);
+      } finally {
+        this.starting.delete(projectId);
+      }
+    })();
+
+    this.starting.set(projectId, startPromise);
+    return await startPromise;
+  }
+
+  private async performStart(projectId: string): Promise<PreviewInfo> {
     const project = await getProjectById(projectId);
     if (!project) {
       throw new Error('Project not found');
