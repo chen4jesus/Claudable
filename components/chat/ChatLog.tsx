@@ -996,9 +996,10 @@ interface ChatLogProps {
     add: (message: ChatMessage) => void;
     remove: (messageId: string) => void;
   }) => void;
+  isAdmin?: boolean;
 }
 
-export default function ChatLog({ projectId, onSessionStatusChange, onProjectStatusUpdate, onSseFallbackActive, startRequest, completeRequest, onAddUserMessage }: ChatLogProps) {
+export default function ChatLog({ projectId, onSessionStatusChange, onProjectStatusUpdate, onSseFallbackActive, startRequest, completeRequest, onAddUserMessage, isAdmin }: ChatLogProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
@@ -2166,6 +2167,25 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     visibleToolMessageIdsRef.current.clear();
   }, [projectId]);
 
+  // Helper to strip or style system prompts
+  const stripSystemPrompts = useCallback((text: string) => {
+    if (!text) return text;
+
+    const tagRegex = /<claudable_system_prompt>([\s\S]*?)<\/claudable_system_prompt>/g;
+
+    if (isAdmin) {
+      // For admins, maybe just highlight it or keep as is
+      // For now, let's keep it but wrap it in a styled div if needed
+      // Actually, let's just keep the text but remove the tags themselves for better readability even for admins
+      return text.replace(tagRegex, (_match, content) => {
+        return `\n> [SYSTEM PROMPT]\n> ${content.trim().split('\n').join('\n> ')}\n`;
+      });
+    }
+
+    // For non-admins, strip completely
+    return text.replace(tagRegex, '').trim();
+  }, [isAdmin]);
+
   // Handle log entries from other WebSocket data
   const handleWebSocketData = (data: any) => {
     // Filter out system-internal messages that shouldn't be shown to users
@@ -2525,6 +2545,16 @@ const ToolResultMessage = ({
       }
     }
 
+    const isToolMessage = message.messageType === 'tool_result' || message.role === 'tool';
+
+    // If message becomes empty after stripping system prompts and it's not a tool message
+    if (!isAdmin && !isToolMessage && !isToolUsageMessage(message)) {
+      const stripped = stripSystemPrompts(contentText);
+      if (!stripped.trim()) {
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -2813,7 +2843,7 @@ const ToolResultMessage = ({
         {/* Render chat messages */}
         {messages.filter(shouldDisplayMessage).map((message, index) => {
           const messageMetadata = message.metadata as Record<string, unknown> | null;
-          const messageText = normalizeChatContent(message.content);
+          const messageText = stripSystemPrompts(normalizeChatContent(message.content));
           const isToolMessage = message.messageType === 'tool_result' || isToolUsageMessage(message);
           const toolMessageKey = isToolMessage
             ? ensureStableMessageId(message)

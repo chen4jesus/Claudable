@@ -31,92 +31,83 @@ function killProcessTree(pid: number): Promise<void> {
   return new Promise((resolve) => {
     if (isWindows) {
       // Windows: use taskkill with /T (tree) and /F (force)
-      exec(`taskkill /pid ${pid} /T /F`, (error) => {
+      console.log(`[PreviewManager] Windows taskkill /T /F for PID ${pid}`);
+      exec(`taskkill /pid ${pid} /T /F`, (error, stdout, stderr) => {
         if (error) {
           console.warn(`[PreviewManager] taskkill failed for PID ${pid}:`, error.message);
+          if (stderr) console.warn(`[PreviewManager] taskkill stderr:`, stderr);
+        } else {
+          console.log(`[PreviewManager] taskkill successful for PID ${pid}`);
         }
         resolve();
       });
     } else {
-      // Unix: Use ps to find all child processes and kill them
-      // This approach finds orphaned children better than process groups
-      exec('ps -eo pid,ppid', (error, stdout) => {
-        if (error) {
-          console.warn(`[PreviewManager] ps command failed:`, error.message);
-          // Fall back to direct process kill
-          try {
-            process.kill(pid, 'SIGTERM');
-            setTimeout(() => {
-              try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
-              resolve();
-            }, 1000);
-          } catch {
-            resolve();
-          }
-          return;
-        }
-
-        // Parse ps output to build parent-child relationships
-        const lines = stdout.trim().split('\n').slice(1); // Skip header
-        const pidMap = new Map<number, number[]>(); // parent -> children
-
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 2) {
-            const childPid = parseInt(parts[0], 10);
-            const parentPid = parseInt(parts[1], 10);
-            if (!isNaN(childPid) && !isNaN(parentPid)) {
-              if (!pidMap.has(parentPid)) {
-                pidMap.set(parentPid, []);
-              }
-              pidMap.get(parentPid)!.push(childPid);
-            }
-          }
-        }
-
-        // Recursively collect all descendant PIDs
-        const descendants: number[] = [];
-        const collectDescendants = (parentPid: number) => {
-          const children = pidMap.get(parentPid) || [];
-          for (const child of children) {
-            descendants.push(child);
-            collectDescendants(child);
-          }
-        };
-        collectDescendants(pid);
-        
-        // Add the root PID itself
-        descendants.push(pid);
-        
-        // Reverse to kill children first (deepest first)
-        descendants.reverse();
-        
-        console.log(`[PreviewManager] Killing process tree: PIDs ${descendants.join(', ')}`);
-
-        // First send SIGTERM to all
-        for (const p of descendants) {
-          try {
-            process.kill(p, 'SIGTERM');
-          } catch (e) {
-            // ESRCH means process doesn't exist (already dead)
-            if ((e as NodeJS.ErrnoException).code !== 'ESRCH') {
-              console.warn(`[PreviewManager] SIGTERM failed for PID ${p}:`, e);
-            }
-          }
-        }
-
-        // Wait and then SIGKILL any remaining
+      // Unix: Prefer killing the entire process group if we spawned it detached
+      // If that fails or pid is not a group leader, fallback to tree walk
+      console.log(`[PreviewManager] Unix: Attempting to kill process group -${pid}`);
+      try {
+        process.kill(-pid, 'SIGTERM');
         setTimeout(() => {
-          for (const p of descendants) {
-            try {
-              process.kill(p, 'SIGKILL');
-            } catch {
-              // Ignore - process likely already dead
-            }
-          }
+          try { process.kill(-pid, 'SIGKILL'); } catch { /* ignore */ }
           resolve();
         }, 1000);
-      });
+      } catch (groupError: any) {
+        console.log(`[PreviewManager] Group kill failed (expected if not leader): ${groupError.message}. Falling back to tree crawl.`);
+        
+        exec('ps -eo pid,ppid', (error, stdout) => {
+          if (error) {
+            console.warn(`[PreviewManager] ps command failed:`, error.message);
+            try {
+              process.kill(pid, 'SIGTERM');
+              setTimeout(() => {
+                try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
+                resolve();
+              }, 1000);
+            } catch { resolve(); }
+            return;
+          }
+
+          const lines = stdout.trim().split('\n').slice(1);
+          const pidMap = new Map<number, number[]>();
+
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 2) {
+              const childPid = parseInt(parts[0], 10);
+              const parentPid = parseInt(parts[1], 10);
+              if (!isNaN(childPid) && !isNaN(parentPid)) {
+                if (!pidMap.has(parentPid)) pidMap.set(parentPid, []);
+                pidMap.get(parentPid)!.push(childPid);
+              }
+            }
+          }
+
+          const descendants: number[] = [];
+          const collectDescendants = (p: number) => {
+            const children = pidMap.get(p) || [];
+            for (const child of children) {
+              descendants.push(child);
+              collectDescendants(child);
+            }
+          };
+          collectDescendants(pid);
+          descendants.push(pid);
+          descendants.reverse();
+
+          for (const p of descendants) {
+            try { process.kill(p, 'SIGTERM'); } catch (e: any) {
+              if (e.code !== 'ESRCH') console.warn(`[PreviewManager] SIGTERM failed for PID ${p}:`, e);
+            }
+          }
+
+          setTimeout(() => {
+            for (const p of descendants) {
+              try { process.kill(p, 'SIGKILL'); } catch { /* ignore */ }
+            }
+            resolve();
+          }, 1000);
+        });
+      }
     }
   });
 }
@@ -137,6 +128,8 @@ function killOrphanedPreviewProcesses(): Promise<{ killed: number[]; errors: str
       /python.*wsgi\.py/,
       /python.*app\.py/,
       /flask run/,
+      /uvicorn/,
+      /fastapi/,
       /next dev/,
       /vite/,
       /MainThread/,
@@ -1259,7 +1252,9 @@ class PreviewManager {
           record('Setting up Flask project from git import...');
           // Only scaffold if absolutely necessary (e.g. missing crucial files), but usually we respect the import
           // For now, ensuring port binding on the likely entry point
-          await enforceFlaskPort(projectPath, 'wsgi.py', record);
+          await enforceFlaskPort(projectPath, 'wsgi.py',
+            
+            record);
         } else if (detectedType === 'fastapp') {
            record('Setting up FastApp project from git import...');
            // FastApp usually runs via uvicorn from main:app, no special port enforcement on file needed if passing via CLI
@@ -1301,7 +1296,16 @@ class PreviewManager {
               detectedType = await detectProjectType(projectPath);
             }
 
-           if (detectedType === 'fastapp') {
+            if (detectedType === 'flask') {
+              const requirementsPath = path.join(projectPath, 'requirements.txt');
+              if (await fileExists(requirementsPath)) {
+                record('Installing Python dependencies for Flask project...');
+                const pyCmd = await detectPythonCommand({ ...process.env });
+                await runPipInstall(['install', '-r', 'requirements.txt'], projectPath, { ...process.env }, collectFromChunk, pyCmd);
+              } else {
+                record('Flask project detected but requirements.txt missing. Skipping pip install.');
+              }
+            } else if (detectedType === 'fastapp') {
               const requirementsPath = path.join(projectPath, 'requirements.txt');
               if (await fileExists(requirementsPath)) {
                 record('Installing Python dependencies for FastApp project...');
@@ -1515,7 +1519,6 @@ class PreviewManager {
       
       // Always ensure dependencies (npm will handle caching/idempotency)
       // Check concurrency lock:
-
       const existingInstall = this.installing.get(projectId);
       if (existingInstall) {
         log(Buffer.from('[PreviewManager] Dependency installation already in progress; waiting...'));
@@ -1648,18 +1651,41 @@ class PreviewManager {
        };
     } else if (isFastAppProject) {
        // FastApp (Uvicorn)
-       spawnCommand = await detectPythonCommand(env);
-       // Run module uvicorn directly
-       // Command: python -m uvicorn app.main:app --host 0.0.0.0 --port <PORT> --reload
-       spawnArgs = ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', String(effectivePortFinal), '--reload'];
+       // Favor npm/yarn run dev if available for better process management (especially on Windows)
+       const packageJson = await readPackageJson(projectPath);
        
-       spawnOptions = {
-         cwd: projectPath,
-         env,
-         detached: !isWindows,
-         shell: useShell,
-         stdio: ['ignore', 'pipe', 'pipe'],
-       };
+       if (packageJson?.scripts?.dev) {
+         const managerId = await detectPackageManager(projectPath);
+         const manager = PACKAGE_MANAGER_COMMANDS[managerId];
+         
+         spawnCommand = manager.command;
+         // Pass host and port as arguments to the dev script
+         spawnArgs = ['run', 'dev', '--', '--host', '0.0.0.0', '--port', String(effectivePortFinal)];
+         
+         spawnOptions = {
+           cwd: projectPath,
+           env: {
+             ...env,
+             PORT: String(effectivePortFinal)
+           },
+           detached: true, // Use detached on Windows too to prevent signal propagation (e.g. uvicorn reload)
+           shell: useShell,
+           stdio: ['ignore', 'pipe', 'pipe'],
+         };
+       } else {
+         spawnCommand = await detectPythonCommand(env);
+         // Run module uvicorn directly
+         // Command: python -m uvicorn app.main:app --host 0.0.0.0 --port <PORT> --reload
+         spawnArgs = ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', String(effectivePortFinal), '--reload'];
+         
+         spawnOptions = {
+           cwd: projectPath,
+           env,
+           detached: !isWindows,
+           shell: useShell,
+           stdio: ['ignore', 'pipe', 'pipe'],
+         };
+       }
     } else if (isStaticHtmlProject) {
         // Static HTML Project
         const packageJson = await readPackageJson(projectPath);
@@ -1693,7 +1719,7 @@ class PreviewManager {
           },
           shell: useShell, // Required on Windows to avoid EINVAL
           stdio: useShell ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-          detached: !isWindows, // Create new process group on Unix for tree termination
+          detached: true, // Create new process group on all platforms for tree termination
         };
     }
 
@@ -1843,6 +1869,12 @@ class PreviewManager {
     }
 
     this.processes.delete(projectId);
+    
+    // Also trigger global orphan cleanup to catch any persistent side-processes
+    // This addresses the 'go back' cleanup requirement
+    this.killOrphanedPreviewProcesses().catch(err => 
+      console.warn('[PreviewManager] Orphan cleanup on stop failed:', err)
+    );
     await updateProject(projectId, {
       previewUrl: null,
       previewPort: null,
@@ -2308,3 +2340,39 @@ const globalPreviewManager = globalThis as unknown as {
 export const previewManager: PreviewManager =
   globalPreviewManager.__claudable_preview_manager_v3__ ??
   (globalPreviewManager.__claudable_preview_manager_v3__ = new PreviewManager());
+
+// Register global exit handlers to ensure cleanup on application shutdown
+if (typeof process !== 'undefined') {
+  const cleanup = async () => {
+    console.log('[PreviewManager] Global exit handler triggered. Cleaning up...');
+    try {
+      await previewManager.stopAll();
+    } catch (e) {
+      console.error('[PreviewManager] Error during global cleanup:', e);
+    }
+  };
+
+  // Standard exit
+  process.on('exit', () => {
+    // Note: 'exit' only supports synchronous code. 
+    // We attempt stopAll, but background tasks might be cut short.
+    // SIGINT/SIGTERM handlers below handle the async cleanup.
+    console.log('[PreviewManager] Process exit event.');
+  });
+
+  // Signal handlers for async cleanup
+  ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach(signal => {
+    process.on(signal, async () => {
+      console.log(`[PreviewManager] Received ${signal}. Cleaning up...`);
+      await cleanup();
+      process.exit(0);
+    });
+  });
+
+  // Unhandled rejections/exceptions to ensure we don't leak on crash
+  process.on('uncaughtException', async (error) => {
+    console.error('[PreviewManager] Uncaught Exception. Cleaning up...', error);
+    await cleanup();
+    process.exit(1);
+  });
+}

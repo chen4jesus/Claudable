@@ -581,7 +581,7 @@ export default function HomePage() {
     try {
       // Smart project type detection based on prompt keywords
       const lowerPrompt = prompt.toLowerCase();
-      let detectedTemplateType = 'nextjs'; // default
+      let detectedTemplateType = 'fastapp'; // default
       
       if (lowerPrompt.includes('flask') || lowerPrompt.includes('python') || lowerPrompt.includes('pip ')) {
         detectedTemplateType = 'flask';
@@ -593,6 +593,8 @@ export default function HomePage() {
         detectedTemplateType = 'static-html';
       } else if ((lowerPrompt.includes('react') && !lowerPrompt.includes('next')) || lowerPrompt.includes('vite') || lowerPrompt.includes('create-react-app')) {
         detectedTemplateType = 'react';
+      } else if (lowerPrompt.includes('next')) {
+        detectedTemplateType = 'nextjs';
       }
       
       // Create a new project first

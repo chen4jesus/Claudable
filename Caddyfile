@@ -31,7 +31,7 @@ build.faithconnect.us {
     tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
     log {
         output file /data/access.log {
-            roll_size 10MB
+            roll_size 50MB
             roll_keep 10
             roll_keep_for 720h
         }

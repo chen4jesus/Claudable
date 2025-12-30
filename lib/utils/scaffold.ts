@@ -589,6 +589,14 @@ child.on('exit', (code) => {
     root * /usr/share/caddy
     file_server
     encode zstd gzip
+    
+    log {
+        output file /data/access.log {
+            roll_size 50MB
+            roll_keep 10
+            roll_keep_for 720h
+        }
+    }
 }
 `
   );
@@ -2045,14 +2053,14 @@ def health_check():
   // requirements.txt
   await writeFileIfMissing(
     path.join(projectPath, 'requirements.txt'),
-    `fastapi>=0.109.0
+    `fastapi>=0.128.0
 uvicorn[standard]>=0.27.0
 sqlmodel>=0.0.14
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 python-multipart
 jinja2>=3.1.2
-pydantic-settings
+pydantic-settings>=2.0.0
 `
   );
 
@@ -2098,8 +2106,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
   // docker-compose.yml
   await writeFileIfMissing(
     path.join(projectPath, 'docker-compose.yml'),
-    `version: "3.8"
-
+    `
 services:
   backend:
     container_name: ${projectId}_backend
@@ -2152,6 +2159,14 @@ volumes:
 
     # Compress responses
     encode zstd gzip
+
+    log {
+        output file /data/access.log {
+            roll_size 50MB
+            roll_keep 10
+            roll_keep_for 720h
+        }
+    }
 }
 `
   );

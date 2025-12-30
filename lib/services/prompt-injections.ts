@@ -43,7 +43,7 @@ export async function applyInjections(text: string, point: InjectionPoint, templ
   let result = text;
 
   for (const injection of injections) {
-    const content = `#####Read the following system prompts before you act#####\n\n${injection.content}\n\n#####End of system prompts#####`;
+    const content = `<claudable_system_prompt>\n${injection.content}\n</claudable_system_prompt>`;
     const position = injection.position as InjectionPosition;
 
     switch (position) {

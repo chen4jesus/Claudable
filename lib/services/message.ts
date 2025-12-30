@@ -40,7 +40,7 @@ export async function getMessagesByProjectId(
 ): Promise<Message[]> {
   const messages = await prisma.message.findMany({
     where: { projectId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     skip: offset,
     take: limit,
   });

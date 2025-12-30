@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       preferredCli,
       selectedModel: normalizeModelId(preferredCli, requestedModel ?? getDefaultModelForCli(preferredCli)),
       description: body.description,
-      templateType: body.templateType || body.template_type || 'nextjs',
+      templateType: body.templateType || body.template_type || 'fastapp',
       gitRepoUrl: body.gitRepoUrl || body.git_repo_url,
       groupId: groupId,
     } as any;

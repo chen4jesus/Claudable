@@ -2631,6 +2631,7 @@ const persistProjectPreferences = useCallback(
                 onProjectStatusUpdate={handleProjectStatusUpdate}
                 startRequest={startRequest}
                 completeRequest={completeRequest}
+                isAdmin={isAdmin}
               />
               </ChatErrorBoundary>
             </div>
