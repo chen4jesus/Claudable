@@ -577,6 +577,77 @@ child.on('exit', (code) => {
 });
 `
   );
+
+  // Caddyfile
+  await writeFileIfMissing(
+    path.join(projectPath, 'Caddyfile'),
+    `{
+    email {$DOMAIN_EMAIL}
+}
+
+{$DOMAIN_NAME} {
+    root * /usr/share/caddy
+    file_server
+    encode zstd gzip
+}
+`
+  );
+
+  // Dockerfile
+  await writeFileIfMissing(
+    path.join(projectPath, 'Dockerfile'),
+    `FROM caddy:alpine
+COPY . /usr/share/caddy
+COPY Caddyfile /etc/caddy/Caddyfile
+`
+  );
+
+  // docker-compose.yml
+  await writeFileIfMissing(
+    path.join(projectPath, 'docker-compose.yml'),
+    `version: '3'
+services:
+  web:
+    build: .
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN_NAME=\${DOMAIN_NAME:-localhost}
+      - DOMAIN_EMAIL=\${DOMAIN_EMAIL:-admin@localhost}
+`
+  );
+
+  // .gitignore
+  await writeFileIfMissing(
+    path.join(projectPath, '.gitignore'),
+    `# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Build artifacts
+dist/
+build/
+.turbo/
+
+# Environment files
+.env
+.env.*
+.claudable/
+
+# Misc
+.DS_Store
+.git-backup-*
+.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+`
+  );
 }
 
 export async function scaffoldFlaskApp(
