@@ -23,6 +23,43 @@ const bunCommand = process.platform === 'win32' ? 'bun.exe' : 'bun';
 const isWindows = process.platform === 'win32';
 
 /**
+ * Augment PATH with the Python user bin directory (~/.local/bin on Unix, AppData on Windows).
+ * This ensures pip-installed scripts (like uvicorn) are discoverable.
+ */
+function augmentPathWithPythonUserBin(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const homeDir = os.homedir();
+  let userBinPath: string;
+
+  if (isWindows) {
+    // On Windows, pip --user installs to %APPDATA%\Python\PythonXX\Scripts
+    // We also add %LOCALAPPDATA%\Programs\Python\PythonXX\Scripts for completeness
+    const appData = env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
+    const localAppData = env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
+    userBinPath = [
+      path.join(appData, 'Python', 'Python312', 'Scripts'),
+      path.join(appData, 'Python', 'Python311', 'Scripts'),
+      path.join(appData, 'Python', 'Python310', 'Scripts'),
+      path.join(localAppData, 'Programs', 'Python', 'Python312', 'Scripts'),
+      path.join(localAppData, 'Programs', 'Python', 'Python311', 'Scripts'),
+      path.join(localAppData, 'Programs', 'Python', 'Python310', 'Scripts'),
+    ].join(path.delimiter);
+  } else {
+    // On Unix, pip --user installs to ~/.local/bin
+    userBinPath = path.join(homeDir, '.local', 'bin');
+  }
+
+  const existingPath = env.PATH || '';
+  if (existingPath.includes(userBinPath)) {
+    return env; // Already includes the path
+  }
+
+  return {
+    ...env,
+    PATH: `${userBinPath}${path.delimiter}${existingPath}`,
+  };
+}
+
+/**
  * Kill an entire process tree (parent + all descendants)
  * On Windows: uses taskkill /T /F
  * On Unix: uses ps -eo pid,ppid to find all descendants and kill them
@@ -1058,7 +1095,9 @@ async function runPipInstall(
   for (const option of options) {
     try {
       const finalArgs = [...option.args, ...installArgs];
-      await appendCommandLogs(option.cmd, finalArgs, cwd, env, logger);
+      // Augment PATH to include Python user bin directory for pip to find its tools
+      const augmentedEnv = augmentPathWithPythonUserBin(env);
+      await appendCommandLogs(option.cmd, finalArgs, cwd, augmentedEnv, logger);
       return; // Success
     } catch (error) {
       lastError = error;
@@ -1078,7 +1117,8 @@ async function runPipInstall(
          try {
            logger(Buffer.from(`[PreviewManager] Install failed, retrying with --break-system-packages...`));
            const breakArgs = [...option.args, ...installArgs, '--break-system-packages'];
-           await appendCommandLogs(option.cmd, breakArgs, cwd, env, logger);
+           const augmentedEnv = augmentPathWithPythonUserBin(env);
+           await appendCommandLogs(option.cmd, breakArgs, cwd, augmentedEnv, logger);
            return; // Success on retry
          } catch (breakError) {
            // If that failed too, it might be permission issue. Try --user
@@ -1086,8 +1126,10 @@ async function runPipInstall(
              try {
                logger(Buffer.from(`[PreviewManager] Install failed again, retrying with --user --break-system-packages...`));
                const userArgs = [...option.args, ...installArgs, '--user', '--break-system-packages'];
-               await appendCommandLogs(option.cmd, userArgs, cwd, env, logger);
+               const augmentedEnv = augmentPathWithPythonUserBin(env);
+               await appendCommandLogs(option.cmd, userArgs, cwd, augmentedEnv, logger);
                return; // Success on second retry
+
              } catch (userError) {
                lastError = userError;
              }
@@ -1500,6 +1542,13 @@ class PreviewManager {
       delete env.DATABASE_PRISMA_URL;
       delete env.DATABASE_URL_NON_POOLING;
       delete env.SHADOW_DATABASE_URL;
+    }
+
+    // Augment PATH with Python user bin directory for Flask/FastApp projects
+    // This ensures pip-installed scripts (like uvicorn) are discoverable
+    if (isFlaskProject || isFastAppProject) {
+      const augmentedEnv = augmentPathWithPythonUserBin(env);
+      Object.assign(env, augmentedEnv);
     }
 
 
