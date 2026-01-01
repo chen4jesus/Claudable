@@ -3366,7 +3366,7 @@ const persistProjectPreferences = useCallback(
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 tracking-tight">Data Designer</h3>
-                  <p className="text-xs text-gray-500 font-medium">LinkML Visual Schema Modeler</p>
+                  <p className="text-xs text-gray-500 font-medium">Visual Schema Modeler</p>
                 </div>
               </div>
               <button 

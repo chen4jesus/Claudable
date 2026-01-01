@@ -76,6 +76,9 @@ export async function middleware(request: NextRequest) {
   const session = request.cookies.get('session')?.value;
 
   if (!session) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
@@ -83,6 +86,9 @@ export async function middleware(request: NextRequest) {
     await decrypt(session);
     return NextResponse.next();
   } catch (error) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 }

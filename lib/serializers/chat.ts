@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { Message, MessageMetadata } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
 
@@ -51,7 +50,7 @@ export function createRealtimeMessage(
     createdAt;
 
   return {
-    id: payload.id ?? uuidv4(),
+    id: payload.id ?? crypto.randomUUID(),
     projectId: payload.projectId,
     role: payload.role,
     messageType: payload.messageType,

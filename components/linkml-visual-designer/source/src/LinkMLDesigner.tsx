@@ -266,19 +266,37 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
     if (!projectId) return;
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/content`, {
+      // 1. Save JSON Model
+      const jsonRes = await fetch(`/api/projects/${projectId}/files/content`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          path: 'designer_model.json',
+          path: 'public/schemas/model.json',
           content: JSON.stringify(model, null, 2)
         })
       });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to save design');
+      
+      if (!jsonRes.ok) {
+        const errorData = await jsonRes.json().catch(() => ({}));
+        throw new Error(`JSON: ${errorData.error || 'Failed to save JSON'}`);
       }
-      alert('Design saved successfully as designer_model.json');
+
+      // 2. Save SQL Schema
+      const sqlRes = await fetch(`/api/projects/${projectId}/files/content`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: 'public/schemas/model.sql',
+          content: generateSql(model)
+        })
+      });
+
+      if (!sqlRes.ok) {
+        const errorData = await sqlRes.json().catch(() => ({}));
+        throw new Error(`SQL: ${errorData.error || 'Failed to save SQL'}`);
+      }
+
+      alert('Design saved successfully to public/schemas/ (model.json and model.sql)');
     } catch (err: any) {
       console.error('Save error:', err);
       alert(`Error saving design: ${err.message || 'Unknown error'}`);

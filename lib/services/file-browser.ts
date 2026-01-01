@@ -243,15 +243,31 @@ export async function writeProjectFileContent(
     normalizedPath === '.' ? '.' : normalizedPath
   );
 
-  let stats;
-  try {
-    stats = await fs.stat(absolutePath);
-  } catch (error) {
-    throw new FileBrowserError('File not found', 404);
-  }
+  const parentDir = path.dirname(absolutePath);
 
-  if (!stats.isFile()) {
-    throw new FileBrowserError('Not a file', 400);
+  try {
+    const stats = await fs.stat(absolutePath);
+    if (!stats.isFile()) {
+      throw new FileBrowserError('Not a file', 400);
+    }
+  } catch (error: any) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+    // File doesn't exist, which is fine for writing.
+    // Ensure parent directory exists.
+    try {
+      const parentStats = await fs.stat(parentDir);
+      if (!parentStats.isDirectory()) {
+         throw new FileBrowserError('Parent path is not a directory', 400);
+      }
+    } catch (parentErr: any) {
+      if (parentErr.code === 'ENOENT') {
+        await fs.mkdir(parentDir, { recursive: true });
+      } else {
+        throw parentErr;
+      }
+    }
   }
 
   if (content.length > MAX_WRITE_BYTES) {
@@ -261,6 +277,7 @@ export async function writeProjectFileContent(
   try {
     await fs.writeFile(absolutePath, content, 'utf-8');
   } catch (error) {
+    console.error('[FileBrowser] Failed to write project file:', error);
     throw new FileBrowserError('Failed to write file', 500);
   }
 }
