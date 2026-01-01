@@ -67,6 +67,7 @@ export interface ElementContext {
   };
   innerText: string;
   html: string;
+  innerHTML: string;
   selector: string;
   srcId?: string | null;
   parent: {
