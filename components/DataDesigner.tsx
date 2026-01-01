@@ -6,9 +6,11 @@ import 'reactflow/dist/style.css';
 // Import source styles (Tailwind + custom classes)
 import './linkml-visual-designer/source/src/index.css';
 
+import type { LinkMLDesignerProps } from './linkml-visual-designer/source/src/LinkMLDesigner';
+
 // Dynamic import for the local component from source
-const LinkMLVisualDesigner = dynamic(
-  () => import('./linkml-visual-designer/source/src/LinkMLDesigner').then((mod: any) => mod.LinkMLDesigner),
+const LinkMLVisualDesigner = dynamic<LinkMLDesignerProps>(
+  () => import('./linkml-visual-designer/source/src/LinkMLDesigner').then((mod) => mod.LinkMLDesigner),
   { 
     ssr: false,
     loading: () => (
