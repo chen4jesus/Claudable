@@ -274,11 +274,14 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
           content: JSON.stringify(model, null, 2)
         })
       });
-      if (!response.ok) throw new Error('Failed to save');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save design');
+      }
       alert('Design saved successfully as designer_model.json');
-    } catch (err) {
-      console.error(err);
-      alert('Error saving design');
+    } catch (err: any) {
+      console.error('Save error:', err);
+      alert(`Error saving design: ${err.message || 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }

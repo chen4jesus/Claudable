@@ -2709,8 +2709,8 @@ const persistProjectPreferences = useCallback(
         }
         
       `}</style>
-
-      <div className="h-screen bg-white flex relative overflow-hidden">
+      <LinkMLProvider>
+        <div className="h-screen bg-white flex relative overflow-hidden">
         <div className="h-full w-full flex">
           {/* Left: Chat window */}
           <div
@@ -3002,7 +3002,6 @@ const persistProjectPreferences = useCallback(
               </div>
               
             {/* Content Area */}
-            <LinkMLProvider>
               <div className="flex-1 relative bg-black overflow-hidden">
                 <AnimatePresence mode="wait">
                   {viewMode === 'preview' ? (
@@ -3093,9 +3092,7 @@ const persistProjectPreferences = useCallback(
                                 className="text-center"
                               >
                                 <div className="w-40 h-40 mx-auto mb-6 relative">
-                                  <MotionDiv
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+                                  <div 
                                     className="w-full h-full"
                                     style={{
                                       backgroundColor: activeBrandColor,
@@ -3141,9 +3138,7 @@ const persistProjectPreferences = useCallback(
                                   {hasActiveRequests && !isExplicitlyStopped ? (
                                     <>
                                       <div className="w-40 h-40 mx-auto mb-6 relative">
-                                        <MotionDiv
-                                          animate={{ rotate: 360 }}
-                                          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                                        <div 
                                           className="w-full h-full"
                                           style={{
                                             backgroundColor: activeBrandColor,
@@ -3176,12 +3171,6 @@ const persistProjectPreferences = useCallback(
                                         onClick={!isRunning && !isStartingPreview ? start : undefined}
                                         className={`w-40 h-40 mx-auto mb-6 relative ${!isRunning && !isStartingPreview ? 'cursor-pointer group' : ''}`}
                                       >
-                              {/* Claudable Symbol with rotating animation when starting */}
-                              <MotionDiv
-                                className="w-full h-full"
-                                animate={isStartingPreview ? { rotate: 360 } : {}}
-                                transition={{ duration: 6, repeat: isStartingPreview ? Infinity : 0, ease: "linear" }}
-                              >
                                         <div
                                           className="w-full h-full"
                                           style={{
@@ -3191,7 +3180,6 @@ const persistProjectPreferences = useCallback(
                                             opacity: 0.9
                                           }}
                                         />
-                              </MotionDiv>
                               
                               {/* Icon in Center - Play or Loading */}
                                         <div className="absolute inset-0 flex items-center justify-center">
@@ -3361,7 +3349,6 @@ const persistProjectPreferences = useCallback(
                   )}
                 </AnimatePresence>
               </div>
-            </LinkMLProvider>
           </div>
         </div>
       </div>
@@ -3390,9 +3377,7 @@ const persistProjectPreferences = useCallback(
               </button>
             </div>
             <div className="flex-1 min-h-0 bg-white">
-              <LinkMLProvider>
-                <DataDesigner projectId={projectId} />
-              </LinkMLProvider>
+              <DataDesigner projectId={projectId} />
             </div>
           </div>
         </div>
@@ -3738,6 +3723,7 @@ const persistProjectPreferences = useCallback(
         confirmLabel={statusModal.confirmLabel}
         onConfirm={statusModal.onConfirm}
       />
+    </LinkMLProvider>
     </>
   );
 }
