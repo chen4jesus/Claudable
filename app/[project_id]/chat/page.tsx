@@ -19,6 +19,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { AiSmartEditToolbar } from '@/components/AiSmartEditToolbar';
 import { SmartEditModal } from '@/components/modals/SmartEditModal';
 import { StatusModal, type ModalType } from '@/components/modals/StatusModal';
+import { DataDesigner } from '@/components/DataDesigner';
+import { LinkMLProvider } from '@/components/linkml-visual-designer/source/src/context/LinkMLContext';
 import { ElementContext } from '@/types/smart-edit';
 import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import {
@@ -343,7 +345,13 @@ export default function ChatPage() {
   const [mode, setMode] = useState<'act' | 'chat'>('act');
   const [isRunning, setIsRunning] = useState(false);
   const [isSseFallbackActive, setIsSseFallbackActive] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
+  
+  // View Mode State: 'preview' | 'code'
+  const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
+  const [showDataDesigner, setShowDataDesigner] = useState(false);
+  // Backwards compatibility for existing logic that relies on showPreview
+  const showPreview = viewMode === 'preview';
+  
   const [deviceMode, setDeviceMode] = useState<'desktop'|'mobile'>('desktop');
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<{name: string; url: string; base64?: string; path?: string}[]>([]);
@@ -1037,6 +1045,139 @@ const persistProjectPreferences = useCallback(
     setIsSmartEditModalOpen(false);
   };
 
+  const handleInjectCarousel = async (playlistUrl: string, limit: number, context: ElementContext) => {
+    if (!projectId || !context.srcId) {
+      showStatus('error', 'Error', 'Project ID or Source ID is missing.');
+      return;
+    }
+
+    // Determine the file path from the source ID or current document if available
+    // For now, we'll try to get it from the smart edit context if we can't find it elsewhere.
+    // However, the PreviewManager.injectYoutubeCarousel expects a relFilePath.
+    // The smart edit script injections include the file path.
+    const filePath = context.url.includes('?') ? context.url.split('?')[0] : context.url;
+    // Robust path resolution: 1. Source ID prefix (most reliable), 2. Global override (editor), 3. URL-based heuristic
+    let targetFilePath = null;
+    
+    if (context.srcId && context.srcId.includes('::')) {
+      targetFilePath = context.srcId.split('::')[0];
+    }
+    
+    if (!targetFilePath) {
+      targetFilePath = (window as any).__AI_SMART_EDIT_FILE__;
+    }
+    
+    if (!targetFilePath) {
+      targetFilePath = filePath.endsWith('.html') ? filePath.replace(/^\//, '') : 'app/templates/example.html';
+    }
+
+    try {
+      showStatus('info', 'Injecting Carousel', 'Fetching videos and updating page...');
+      
+      const response = await fetch(`/api/projects/${projectId}/carousel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: targetFilePath,
+          playlistUrl,
+          limit
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        showStatus('success', 'Success', `Successfully injected ${result.data.videoCount} videos into the page.`);
+        refreshPreview();
+      } else {
+        showStatus('error', 'Injection Failed', result.message || 'Failed to inject carousel.');
+      }
+    } catch (error) {
+       console.error('Carousel injection error:', error);
+       showStatus('error', 'Error', 'An unexpected error occurred during injection.');
+    }
+  };
+
+
+  const handleManualEditSubmit = async (
+    changes: { type: 'html' | 'attr'; value: string; attrName?: string }[], 
+    context: ElementContext
+  ) => {
+    if (!projectId || !context.srcId) {
+      showStatus('error', 'Error', 'Project ID or Source ID is missing.');
+      return;
+    }
+
+    try {
+      // 1. Immediately update the iframe for visual feedback for each change
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        for (const change of changes) {
+          if (change.type === 'html') {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'AI_SMART_EDIT:UPDATE_ELEMENT',
+              payload: {
+                srcId: context.srcId,
+                newHtml: change.value
+              }
+            }, '*');
+          } else if (change.type === 'attr' && change.attrName) {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'AI_SMART_EDIT:UPDATE_ATTR',
+              payload: {
+                srcId: context.srcId,
+                attrName: change.attrName,
+                value: change.value
+              }
+            }, '*');
+          }
+        }
+      }
+
+      // 2. Persist the changes surgically to the source file
+      let filePath = context.url.includes('?') ? context.url.split('?')[0] : context.url;
+      // Robust path resolution: 1. Source ID prefix (most reliable), 2. Global override (editor), 3. URL-based heuristic
+      let targetFilePath = null;
+      
+      if (context.srcId && context.srcId.includes('::')) {
+        targetFilePath = context.srcId.split('::')[0];
+      }
+      
+      if (!targetFilePath) {
+        targetFilePath = (window as any).__AI_SMART_EDIT_FILE__;
+      }
+      
+      if (!targetFilePath) {
+        targetFilePath = filePath.endsWith('.html') ? filePath.replace(/^\//, '') : 'app/templates/example.html';
+      }
+
+      const response = await fetch(`/api/projects/${projectId}/preview/save-page`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: targetFilePath,
+          content: '', // Full content not needed for granular changes
+          changes: changes.map(c => ({
+            ...c,
+            srcId: context.srcId,
+            originalHTML: context.innerHTML,
+            selector: context.selector
+          }))
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        showStatus('success', 'Changes Applied', 'Manual edits have been saved and applied to the source file.');
+      } else {
+        showStatus('error', 'Save Failed', result.error || 'Failed to preserve manual edits.');
+      }
+    } catch (error) {
+       console.error('Manual edit submission error:', error);
+       showStatus('error', 'Error', 'An unexpected error occurred while saving your changes.');
+    } finally {
+      setIsSmartEditModalOpen(false);
+    }
+  };
+
 
   // Navigate to specific route in iframe
   const navigateToRoute = (route: string) => {
@@ -1230,6 +1371,9 @@ const persistProjectPreferences = useCallback(
       editedContentRef.current = fileContent;
       setHasUnsavedChanges(false);
       setSelectedFile(path);
+      if (typeof window !== 'undefined') {
+        (window as any).__AI_SMART_EDIT_FILE__ = path;
+      }
       setIsFileUpdating(false);
 
       requestAnimationFrame(() => {
@@ -2673,25 +2817,36 @@ const persistProjectPreferences = useCallback(
                   <div className="flex items-center bg-gray-100 rounded-lg p-1">
                     <button
                       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                        showPreview 
-                          ? 'bg-white text-gray-900 ' 
-                          : 'text-gray-600 hover:text-gray-900 '
+                        viewMode === 'preview'
+                          ? 'bg-white text-gray-900 shadow-sm' 
+                          : 'text-gray-600 hover:text-gray-900'
                       }`}
-                      onClick={() => setShowPreview(true)}
+                      onClick={() => setViewMode('preview')}
+                      title="Preview"
                     >
                       <span className="w-4 h-4 flex items-center justify-center"><FaDesktop size={16} /></span>
                     </button>
                     <button
                       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                        !showPreview 
-                          ? 'bg-white text-gray-900 ' 
-                          : 'text-gray-600 hover:text-gray-900 '
+                        viewMode === 'code'
+                          ? 'bg-white text-gray-900 shadow-sm' 
+                          : 'text-gray-600 hover:text-gray-900'
                       }`}
-                      onClick={() => setShowPreview(false)}
+                      onClick={() => setViewMode('code')}
+                      title="Code Editor"
                     >
                       <span className="w-4 h-4 flex items-center justify-center"><FaCode size={16} /></span>
                     </button>
                   </div>
+
+                  <button
+                    className="h-9 px-3 flex items-center gap-2 bg-gray-100 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-sm font-medium"
+                    onClick={() => setShowDataDesigner(true)}
+                    title="Data Designer"
+                  >
+                    <span className="w-4 h-4 flex items-center justify-center"><FaDatabase size={14} /></span>
+                    Data Designer
+                  </button>
                   
                   {/* Center Controls */}
                   {showPreview && previewUrl && (
@@ -2846,253 +3001,200 @@ const persistProjectPreferences = useCallback(
                 </div>
               </div>
               
-              {/* Content Area */}
+            {/* Content Area */}
+            <LinkMLProvider>
               <div className="flex-1 relative bg-black overflow-hidden">
-                <AnimatePresence initial={false}>
-                  {showPreview ? (
-                  <MotionDiv
-                    key="preview"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    style={{ height: '100%' }}
-                  >
-                {previewUrl ? (
-                  <div className="relative w-full h-full bg-gray-100 flex items-center justify-center">
-                    <div 
-                      className={`bg-white ${
-                        deviceMode === 'mobile' 
-                          ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
-                          : 'w-full h-full'
-                      } overflow-hidden`}
+                <AnimatePresence mode="wait">
+                  {viewMode === 'preview' ? (
+                    <MotionDiv
+                      key="preview"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="h-full"
                     >
-                      <iframe 
-                        ref={iframeRef}
-                        className="w-full h-full border-none bg-white "
-                        src={previewUrl}
-                        onError={() => {
-                          // Show error overlay
-                          const overlay = document.getElementById('iframe-error-overlay');
-                          if (overlay) overlay.style.display = 'flex';
-                        }}
-                        onLoad={() => {
-                          // Hide error overlay when loaded successfully
-                          const overlay = document.getElementById('iframe-error-overlay');
-                          if (overlay) overlay.style.display = 'none';
-                        }}
-                      />
-                      
-                      {/* Error overlay */}
-                    <div 
-                      id="iframe-error-overlay"
-                      className="absolute inset-0 bg-gray-50 flex items-center justify-center z-10"
-                      style={{ display: 'none' }}
-                    >
-                      <div className="text-center max-w-md mx-auto p-6">
-                        <div className="text-4xl mb-4">🔄</div>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                          Connection Issue
-                        </h3>
-                        <p className="text-gray-600 mb-4">
-                          The preview couldn&apos;t load properly. Try clicking the refresh button to reload the page.
-                        </p>
-                        <button
-                          className="flex items-center gap-2 mx-auto px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-                          onClick={() => {
-                            const iframe = document.querySelector('iframe');
-                            if (iframe) {
-                              iframe.src = iframe.src;
-                            }
-                            const overlay = document.getElementById('iframe-error-overlay');
-                            if (overlay) overlay.style.display = 'none';
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M1 4v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                          Refresh Now
-                        </button>
-                      </div>
-                    </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-gray-50 relative">
-                    {/* Gradient background similar to main page */}
-                    <div className="absolute inset-0">
-                      <div className="absolute inset-0 bg-white " />
-                      <div 
-                        className="absolute inset-0 hidden transition-all duration-1000 ease-in-out"
-                        style={{
-                          background: `radial-gradient(circle at 50% 100%, 
-                            ${activeBrandColor}66 0%, 
-                            ${activeBrandColor}4D 25%, 
-                            ${activeBrandColor}33 50%, 
-                            transparent 70%)`
-                        }}
-                      />
-                      {/* Light mode gradient - subtle */}
-                      <div 
-                        className="absolute inset-0 block transition-all duration-1000 ease-in-out"
-                        style={{
-                          background: `radial-gradient(circle at 50% 100%, 
-                            ${activeBrandColor}40 0%, 
-                            ${activeBrandColor}26 25%, 
-                            transparent 50%)`
-                        }}
-                      />
-                    </div>
-                    
-                    {/* Content with z-index to be above gradient */}
-                    <div className="relative z-10 w-full h-full flex items-center justify-center">
-                    {isStartingPreview ? (
-                      <MotionDiv 
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="text-center"
-                      >
-                        {/* Claudable Symbol with loading spinner */}
-                        <div className="w-40 h-40 mx-auto mb-6 relative">
+                      {previewUrl ? (
+                        <div className="relative w-full h-full bg-gray-100 flex items-center justify-center">
                           <div 
-                            className="w-full h-full"
-                            style={{
-                              backgroundColor: activeBrandColor,
-                              mask: 'url(/Symbol_white.png) no-repeat center/contain',
-                              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
-                              opacity: 0.9
-                            }}
-                          />
-                          
-                          {/* Loading spinner in center */}
-                          <div className="absolute inset-0 flex items-center justify-center">
+                            className={`bg-white ${
+                              deviceMode === 'mobile' 
+                                ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
+                                : 'w-full h-full'
+                            } overflow-hidden`}
+                          >
+                            <iframe 
+                              ref={iframeRef}
+                              className="w-full h-full border-none bg-white "
+                              src={previewUrl}
+                              onError={() => {
+                                const overlay = document.getElementById('iframe-error-overlay');
+                                if (overlay) overlay.style.display = 'flex';
+                              }}
+                              onLoad={() => {
+                                const overlay = document.getElementById('iframe-error-overlay');
+                                if (overlay) overlay.style.display = 'none';
+                              }}
+                            />
+                            
+                            {/* Error overlay */}
                             <div 
-                              className="w-14 h-14 border-4 rounded-full animate-spin"
+                              id="iframe-error-overlay"
+                              className="absolute inset-0 bg-gray-50 flex items-center justify-center z-10"
+                              style={{ display: 'none' }}
+                            >
+                              <div className="text-center max-w-md mx-auto p-6">
+                                <div className="text-4xl mb-4">🔄</div>
+                                <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                                  Connection Issue
+                                </h3>
+                                <p className="text-gray-600 mb-4">
+                                  The preview couldn&apos;t load properly. Try clicking the refresh button to reload the page.
+                                </p>
+                                <button
+                                  className="flex items-center gap-2 mx-auto px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                                  onClick={() => {
+                                    const iframe = document.querySelector('iframe');
+                                    if (iframe) iframe.src = iframe.src;
+                                    const overlay = document.getElementById('iframe-error-overlay');
+                                    if (overlay) overlay.style.display = 'none';
+                                  }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M1 4v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                  Refresh Now
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-gray-50 relative overflow-hidden">
+                          {/* Rich Gradient Background */}
+                          <div className="absolute inset-0">
+                            <div className="absolute inset-0 bg-white" />
+                            <div 
+                              className="absolute inset-0 transition-all duration-1000 ease-in-out"
                               style={{
-                                borderTopColor: 'transparent',
-                                borderRightColor: activeBrandColor,
-                                borderBottomColor: activeBrandColor,
-                                borderLeftColor: activeBrandColor,
+                                background: `radial-gradient(circle at 50% 100%, 
+                                  ${activeBrandColor}40 0%, 
+                                  ${activeBrandColor}26 25%, 
+                                  transparent 50%)`
                               }}
                             />
                           </div>
-                        </div>
-                        
-                        {/* Content */}
-                        <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                          Starting Preview Server
-                        </h3>
-                        
-                        <div className="flex items-center justify-center gap-1 text-gray-600 ">
-                          <span>{previewInitializationMessage}</span>
-                          <MotionDiv
-                            className="flex gap-1 ml-2"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                          >
-                            <MotionDiv
-                              animate={{ opacity: [0, 1, 0] }}
-                              transition={{ duration: 1.5, repeat: Infinity, delay: 0 }}
-                              className="w-1 h-1 bg-gray-600 rounded-full"
-                            />
-                            <MotionDiv
-                              animate={{ opacity: [0, 1, 0] }}
-                              transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
-                              className="w-1 h-1 bg-gray-600 rounded-full"
-                            />
-                            <MotionDiv
-                              animate={{ opacity: [0, 1, 0] }}
-                              transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
-                              className="w-1 h-1 bg-gray-600 rounded-full"
-                            />
-                          </MotionDiv>
-                        </div>
-                      </MotionDiv>
-                    ) : (
-                    <div className="text-center">
-                      <MotionDiv
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                      >
-                        {/* Claudable Symbol */}
-                        {hasActiveRequests && !isExplicitlyStopped ? (
-                          <>
-                            <div className="w-40 h-40 mx-auto mb-6 relative">
-                              <MotionDiv
-                                animate={{ rotate: 360 }}
-                                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                                style={{ transformOrigin: "center center" }}
-                                className="w-full h-full"
+
+                          <div className="relative z-10 w-full h-full flex items-center justify-center">
+                            {isStartingPreview ? (
+                              <MotionDiv 
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="text-center"
                               >
-                          <div 
-                            className="w-full h-full"
-                            style={{
-                              backgroundColor: activeBrandColor,
-                              mask: 'url(/Symbol_white.png) no-repeat center/contain',
-                              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
-                              opacity: 0.9
-                            }}
-                          />
+                                <div className="w-40 h-40 mx-auto mb-6 relative">
+                                  <MotionDiv
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+                                    className="w-full h-full"
+                                    style={{
+                                      backgroundColor: activeBrandColor,
+                                      mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                      WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                      opacity: 0.9
+                                    }}
+                                  />
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div 
+                                      className="w-14 h-14 border-4 rounded-full animate-spin"
+                                      style={{
+                                        borderTopColor: 'transparent',
+                                        borderRightColor: activeBrandColor,
+                                        borderBottomColor: activeBrandColor,
+                                        borderLeftColor: activeBrandColor,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                                <h3 className="text-xl font-semibold text-gray-900 mb-3">Starting Preview Server</h3>
+                                <div className="flex items-center justify-center gap-1 text-gray-600">
+                                  <span>{previewInitializationMessage}</span>
+                                  <MotionDiv className="flex gap-1 ml-2">
+                                    {[0, 0.3, 0.6].map((delay) => (
+                                      <MotionDiv
+                                        key={delay}
+                                        animate={{ opacity: [0, 1, 0] }}
+                                        transition={{ duration: 1.5, repeat: Infinity, delay }}
+                                        className="w-1 h-1 bg-gray-600 rounded-full"
+                                      />
+                                    ))}
+                                  </MotionDiv>
+                                </div>
                               </MotionDiv>
-                            </div>
-                            
-                            <h3 className="text-2xl font-bold mb-3 relative overflow-hidden inline-block">
-                              <span 
-                                className="relative"
-                                style={{
-                                  background: `linear-gradient(90deg, 
-                                    #6b7280 0%, 
-                                    #6b7280 30%, 
-                                    #ffffff 50%, 
-                                    #6b7280 70%, 
-                                    #6b7280 100%)`,
-                                  backgroundSize: '200% 100%',
-                                  WebkitBackgroundClip: 'text',
-                                  backgroundClip: 'text',
-                                  WebkitTextFillColor: 'transparent',
-                                  animation: 'shimmerText 5s linear infinite'
-                                }}
-                              >
-                                Building, please be patient...
-                              </span>
-                              <style>{`
-                                @keyframes shimmerText {
-                                  0% {
-                                    background-position: 200% center;
-                                  }
-                                  100% {
-                                    background-position: -200% center;
-                                  }
-                                }
-                              `}</style>
-                            </h3>
-                          </>
-                        ) : (
-                          <>
-                            <div
-                              onClick={!isRunning && !isStartingPreview ? start : undefined}
-                              className={`w-40 h-40 mx-auto mb-6 relative ${!isRunning && !isStartingPreview ? 'cursor-pointer group' : ''}`}
-                            >
+                            ) : (
+                              <div className="text-center">
+                                <MotionDiv
+                                  initial={{ opacity: 0, y: 20 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ duration: 0.6, ease: "easeOut" }}
+                                >
+                                  {hasActiveRequests && !isExplicitlyStopped ? (
+                                    <>
+                                      <div className="w-40 h-40 mx-auto mb-6 relative">
+                                        <MotionDiv
+                                          animate={{ rotate: 360 }}
+                                          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                                          className="w-full h-full"
+                                          style={{
+                                            backgroundColor: activeBrandColor,
+                                            mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                            WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                            opacity: 0.9
+                                          }}
+                                        />
+                                      </div>
+                                      <h3 className="text-2xl font-bold mb-3 relative overflow-hidden inline-block">
+                                        <span 
+                                          className="relative"
+                                          style={{
+                                            background: `linear-gradient(90deg, #6b7280 0%, #6b7280 30%, #ffffff 50%, #6b7280 70%, #6b7280 100%)`,
+                                            backgroundSize: '200% 100%',
+                                            WebkitBackgroundClip: 'text',
+                                            backgroundClip: 'text',
+                                            WebkitTextFillColor: 'transparent',
+                                            animation: 'shimmerText 5s linear infinite'
+                                          }}
+                                        >
+                                          Building, please be patient...
+                                        </span>
+                                        <style>{`@keyframes shimmerText { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }`}</style>
+                                      </h3>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div
+                                        onClick={!isRunning && !isStartingPreview ? start : undefined}
+                                        className={`w-40 h-40 mx-auto mb-6 relative ${!isRunning && !isStartingPreview ? 'cursor-pointer group' : ''}`}
+                                      >
                               {/* Claudable Symbol with rotating animation when starting */}
                               <MotionDiv
                                 className="w-full h-full"
                                 animate={isStartingPreview ? { rotate: 360 } : {}}
                                 transition={{ duration: 6, repeat: isStartingPreview ? Infinity : 0, ease: "linear" }}
                               >
-                                <div 
-                                  className="w-full h-full"
-                                  style={{
-                                    backgroundColor: activeBrandColor,
-                                    mask: 'url(/Symbol_white.png) no-repeat center/contain',
-                                    WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
-                                    opacity: 0.9
-                                  }}
-                                />
+                                        <div
+                                          className="w-full h-full"
+                                          style={{
+                                            backgroundColor: activeBrandColor,
+                                            mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                            WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                            opacity: 0.9
+                                          }}
+                                        />
                               </MotionDiv>
                               
                               {/* Icon in Center - Play or Loading */}
-                              <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="absolute inset-0 flex items-center justify-center">
                                 {isStartingPreview ? (
                                   <div 
                                     className="w-14 h-14 border-4 rounded-full animate-spin"
@@ -3109,255 +3211,192 @@ const persistProjectPreferences = useCallback(
                                     whileHover={{ scale: 1.2 }}
                                     whileTap={{ scale: 0.9 }}
                                   >
-                                    <FaPlay 
-                                      size={32}
-                                    />
-                                  </MotionDiv>
+                                            <FaPlay size={32} />
+                                          </MotionDiv>
                                 )}
-                              </div>
-                            </div>
-                            
-                            <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                              Preview Not Running
-                            </h3>
-                            
+                                        </div>
+                                      </div>
+                                      <h3 className="text-2xl font-bold text-gray-900 mb-3">Preview Not Running</h3>
                             <p className="text-gray-600 max-w-lg mx-auto">
                               Start your development server to see live changes
                             </p>
-                          </>
-                        )}
-                      </MotionDiv>
-                    </div>
-                    )}
-                    </div>
-                  </div>
-                )}
-                  </MotionDiv>
-                ) : (
-              <MotionDiv
-                key="code"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="h-full flex bg-white "
-              >
-                {/* Left Sidebar - File Explorer (VS Code style) */}
-                <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
-                  {/* Explorer Header */}
-                  <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Explorer</span>
-                  </div>
-                  {/* File Tree */}
-                  <div 
-                    className={`flex-1 overflow-y-auto bg-gray-50 custom-scrollbar transition-all ${
-                      dragOverPath === 'root' ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/10' : ''
-                    }`}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDragEnter={(e) => {
-                      // Only highlight as root if we're not over a specific entry
-                      if (e.target === e.currentTarget) {
-                        setDragOverPath('root');
-                      }
-                    }}
-                    onDragLeave={(e) => {
-                      if (e.target === e.currentTarget) {
-                        setDragOverPath(null);
-                      }
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragOverPath(null);
-                      const sourcePath = e.dataTransfer.getData('text/plain');
-                      if (sourcePath) {
-                        handleMovePath(sourcePath, '.');
-                      }
-                    }}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    {!tree || tree.length === 0 ? (
-                      <div className="px-3 py-8 text-center text-[11px] text-gray-600 select-none">
-                        No files found
-                      </div>
-                    ) : (
-                      <TreeView 
-                        entries={tree || []}
-                        selectedFile={selectedFile}
-                        expandedFolders={expandedFolders}
-                        folderContents={folderContents}
-                        onToggleFolder={toggleFolder}
-                        onSelectFile={openFile}
-                        onLoadFolder={Object.assign((p: string) => handleLoadFolder(p), { setCurrentPath })}
-                        onDelete={handleDeletePath}
-                        onRename={handleRenamePath}
-                        onUpload={handleTriggerUpload}
-                        onMove={handleMovePath}
-                        level={0}
-                        parentPath=""
-                        getFileIcon={getFileIcon}
-                        dragOverPath={dragOverPath}
-                        setDragOverPath={setDragOverPath}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Right Editor Area */}
-                <div className="flex-1 flex flex-col bg-white min-w-0">
-                  {selectedFile ? (
-                    <>
-                      {/* File Tab */}
-                      <div className="flex-shrink-0 bg-gray-100 ">
-                        <div className="flex items-center gap-3 bg-white px-3 py-1.5 border-t-2 border-t-blue-500 ">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-4 h-4 flex items-center justify-center">
-                              {getFileIcon(tree.find(e => e.path === selectedFile) || { path: selectedFile, type: 'file' })}
-                            </span>
-                            <span className="truncate text-[13px] text-gray-700 " style={{ fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
-                              {selectedFile.split('/').pop()}
-                            </span>
+                                    </>
+                                  )}
+                                </MotionDiv>
+                              </div>
+                            )}
                           </div>
-                          {hasUnsavedChanges && (
-                            <span className="text-[11px] text-amber-600 ">
-                              • Unsaved changes
-                            </span>
+                        </div>
+                      )}
+                    </MotionDiv>
+                  ) : (
+                    <MotionDiv
+                      key="code"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="h-full flex bg-white"
+                    >
+                      <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
+                        <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Explorer</span>
+                        </div>
+                        <div 
+                          className={`flex-1 overflow-y-auto bg-gray-50 custom-scrollbar transition-all ${
+                            dragOverPath === 'root' ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/10' : ''
+                          }`}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                          }}
+                          onDragEnter={(e) => {
+                            if (e.target === e.currentTarget) setDragOverPath('root');
+                          }}
+                          onDragLeave={(e) => {
+                            if (e.target === e.currentTarget) setDragOverPath(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOverPath(null);
+                            const sourcePath = e.dataTransfer.getData('text/plain');
+                            if (sourcePath) handleMovePath(sourcePath, '.');
+                          }}
+                        >
+                          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                          {!tree || tree.length === 0 ? (
+                            <div className="px-3 py-8 text-center text-[11px] text-gray-600 select-none">No files found</div>
+                          ) : (
+                            <TreeView 
+                              entries={tree}
+                              selectedFile={selectedFile}
+                              expandedFolders={expandedFolders}
+                              folderContents={folderContents}
+                              onToggleFolder={toggleFolder}
+                              onSelectFile={openFile}
+                              onLoadFolder={Object.assign((p: string) => handleLoadFolder(p), { setCurrentPath })}
+                              onDelete={handleDeletePath}
+                              onRename={handleRenamePath}
+                              onUpload={handleTriggerUpload}
+                              onMove={handleMovePath}
+                              level={0}
+                              parentPath=""
+                              getFileIcon={getFileIcon}
+                              dragOverPath={dragOverPath}
+                              setDragOverPath={setDragOverPath}
+                            />
                           )}
-                          {!hasUnsavedChanges && saveFeedback === 'success' && (
-                            <span className="text-[11px] text-green-600 ">
-                              Saved
-                            </span>
-                          )}
-                          {saveFeedback === 'error' && (
-                            <span
-                              className="text-[11px] text-red-600 truncate max-w-[160px]"
-                              title={saveError ?? 'Failed to save file'}
-                            >
-                              Save error
-                            </span>
-                          )}
-                          {!hasUnsavedChanges && saveFeedback !== 'success' && isFileUpdating && (
-                            <span className="text-[11px] text-green-600 ">
-                              Updated
-                            </span>
-                          )}
-                          <div className="ml-auto flex items-center gap-2">
-                            <button
-                              className="px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed "
-                              onClick={handleSaveFile}
-                              disabled={!hasUnsavedChanges || isSavingFile}
-                              title="Save (Ctrl+S)"
-                            >
-                              {isSavingFile ? 'Saving…' : 'Save'}
-                            </button>
-                            <button
-                              className="text-gray-700 hover:bg-gray-200 px-1 rounded"
-                              onClick={() => {
-                                if (hasUnsavedChanges) {
-                                  const confirmClose =
-                                    typeof window !== 'undefined'
-                                      ? window.confirm('You have unsaved changes. Close without saving?')
-                                      : true;
-                                  if (!confirmClose) {
-                                    return;
-                                  }
-                                }
-                                setSelectedFile('');
-                                setContent('');
-                                setEditedContent('');
-                                editedContentRef.current = '';
-                                setHasUnsavedChanges(false);
-                                setSaveFeedback('idle');
-                                setSaveError(null);
-                                setIsFileUpdating(false);
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
                         </div>
                       </div>
 
-                      {/* Code Editor */}
-                      <div className="flex-1 overflow-hidden">
-                        <div className="w-full h-full flex bg-white overflow-hidden">
-                          {/* Line Numbers */}
-                          <div
-                            ref={lineNumberRef}
-                            className="bg-gray-50 px-3 py-4 select-none flex-shrink-0 overflow-y-auto overflow-x-hidden custom-scrollbar pointer-events-none"
-                            aria-hidden="true"
-                          >
-                            <div className="text-[13px] font-mono text-gray-500 leading-[19px]">
-                              {(editedContent || '').split('\n').map((_, index) => (
-                                <div key={index} className="text-right pr-2">
-                                  {index + 1}
+                      <div className="flex-1 flex flex-col bg-white min-w-0">
+                        {selectedFile ? (
+                          <>
+                            <div className="flex-shrink-0 bg-gray-100">
+                              <div className="flex items-center gap-3 bg-white px-3 py-1.5 border-t-2 border-t-blue-500">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="w-4 h-4 flex items-center justify-center">
+                                    {getFileIcon(tree.find(e => e.path === selectedFile) || { path: selectedFile, type: 'file' })}
+                                  </span>
+                                  <span className="truncate text-[13px] text-gray-700 font-sans">{selectedFile.split('/').pop()}</span>
                                 </div>
-                              ))}
+                                {hasUnsavedChanges && <span className="text-[11px] text-amber-600">• Unsaved changes</span>}
+                                {!hasUnsavedChanges && saveFeedback === 'success' && <span className="text-[11px] text-green-600">Saved</span>}
+                                {saveFeedback === 'error' && <span className="text-[11px] text-red-600 truncate max-w-[160px]" title={saveError ?? 'Failed to save file'}>Save error</span>}
+                                <div className="ml-auto flex items-center gap-2">
+                                  <button
+                                    className="px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300"
+                                    onClick={handleSaveFile}
+                                    disabled={!hasUnsavedChanges || isSavingFile}
+                                  >
+                                    {isSavingFile ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button
+                                    className="text-gray-700 hover:bg-gray-200 px-1 rounded"
+                                    onClick={() => {
+                                      if (hasUnsavedChanges && !window.confirm('You have unsaved changes. Close without saving?')) return;
+                                      setSelectedFile('');
+                                    }}
+                                  >×</button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex-1 overflow-hidden">
+                              <div className="w-full h-full flex bg-white overflow-hidden">
+                                <div ref={lineNumberRef} className="bg-gray-50 px-3 py-4 select-none flex-shrink-0 overflow-y-auto overflow-x-hidden custom-scrollbar pointer-events-none">
+                                  <div className="text-[13px] font-mono text-gray-500 leading-[19px]">
+                                    {(editedContent || '').split('\n').map((_, index) => (
+                                      <div key={index} className="text-right pr-2">{index + 1}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="relative flex-1">
+                                  <pre ref={highlightRef} className="absolute inset-0 m-0 p-4 overflow-hidden text-[13px] leading-[19px] font-mono text-gray-800 whitespace-pre pointer-events-none">
+                                    <code className={`language-${getFileLanguage(selectedFile)}`} dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+                                  </pre>
+                                  <textarea
+                                    ref={editorRef}
+                                    value={editedContent}
+                                    onChange={onEditorChange}
+                                    onScroll={handleEditorScroll}
+                                    onKeyDown={handleEditorKeyDown}
+                                    spellCheck={false}
+                                    className="absolute inset-0 w-full h-full resize-none bg-transparent text-transparent caret-gray-800 outline-none font-mono text-[13px] leading-[19px] p-4 whitespace-pre overflow-auto custom-scrollbar"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex-1 flex items-center justify-center bg-white">
+                            <div className="text-center text-gray-400">
+                              <FaCode size={64} className="mx-auto mb-4 opacity-20" />
+                              <h3 className="text-lg font-medium text-gray-700">Welcome to Code Editor</h3>
+                              <p className="text-sm">Select a file from the explorer to start editing</p>
                             </div>
                           </div>
-                          {/* Code Content */}
-                          <div className="relative flex-1">
-                            <pre
-                              ref={highlightRef}
-                              aria-hidden="true"
-                              className="absolute inset-0 m-0 p-4 overflow-hidden text-[13px] leading-[19px] font-mono text-gray-800 whitespace-pre pointer-events-none"
-                              style={{ fontFamily: "'Fira Code', 'Consolas', 'Monaco', monospace" }}
-                            >
-                              <code
-                                className={`language-${getFileLanguage(selectedFile)}`}
-                                dangerouslySetInnerHTML={{ __html: highlightedCode }}
-                              />
-                              <span className="block h-full min-h-[1px]" />
-                            </pre>
-                            <textarea
-                              ref={editorRef}
-                              value={editedContent}
-                              onChange={onEditorChange}
-                              onScroll={handleEditorScroll}
-                              onKeyDown={handleEditorKeyDown}
-                              spellCheck={false}
-                              autoCorrect="off"
-                              autoCapitalize="none"
-                              autoComplete="off"
-                              wrap="off"
-                              aria-label="Code editor"
-                              className="absolute inset-0 w-full h-full resize-none bg-transparent text-transparent caret-gray-800 outline-none font-mono text-[13px] leading-[19px] p-4 whitespace-pre overflow-auto custom-scrollbar"
-                              style={{ fontFamily: "'Fira Code', 'Consolas', 'Monaco', monospace" }}
-                            />
-                          </div>
-                        </div>
+                        )}
                       </div>
-                    </>
-                  ) : (
-                    /* Welcome Screen */
-                    <div className="flex-1 flex items-center justify-center bg-white ">
-                      <div className="text-center">
-                        <span className="w-16 h-16 mb-4 opacity-10 text-gray-400 mx-auto flex items-center justify-center"><FaCode size={64} /></span>
-                        <h3 className="text-lg font-medium text-gray-700 mb-2">
-                          Welcome to Code Editor
-                        </h3>
-                        <p className="text-sm text-gray-500 ">
-                          Select a file from the explorer to start viewing code
-                        </p>
-                      </div>
-                    </div>
+                    </MotionDiv>
                   )}
-                </div>
-              </MotionDiv>
-                )}
                 </AnimatePresence>
               </div>
-            </div>
+            </LinkMLProvider>
           </div>
         </div>
       </div>
+    </div>
       
+
+      {/* Data Designer Modal */}
+      {showDataDesigner && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-[95vw] h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                  <FaDatabase size={18} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 tracking-tight">Data Designer</h3>
+                  <p className="text-xs text-gray-500 font-medium">LinkML Visual Schema Modeler</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowDataDesigner(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-gray-200"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-white">
+              <LinkMLProvider>
+                <DataDesigner projectId={projectId} />
+              </LinkMLProvider>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Publish Modal */}
       {showPublishPanel && (
@@ -3654,10 +3693,10 @@ const persistProjectPreferences = useCallback(
                 }
               </button>
             </div>
-            </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* Project Settings Modal */}
       <ProjectSettings
@@ -3678,6 +3717,7 @@ const persistProjectPreferences = useCallback(
         onElementSelected={handleSmartEditSelection} 
         projectId={projectId}
         previewUrl={previewUrl}
+        selectedFile={selectedFile}
       />
 
       <SmartEditModal
@@ -3685,6 +3725,8 @@ const persistProjectPreferences = useCallback(
         onClose={() => setIsSmartEditModalOpen(false)}
         elementContext={selectedElementContext}
         onSubmit={handleSmartEditSubmit}
+        onYoutubeSubmit={handleInjectCarousel}
+        onManualSubmit={handleManualEditSubmit}
       />
 
       <StatusModal

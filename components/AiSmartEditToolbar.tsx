@@ -7,9 +7,10 @@ interface AiSmartEditToolbarProps {
   onElementSelected?: (context: ElementContext) => void;
   projectId?: string;
   previewUrl?: string | null;
+  selectedFile?: string;
 }
 
-export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, projectId, previewUrl }: AiSmartEditToolbarProps) {
+export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, projectId, previewUrl, selectedFile }: AiSmartEditToolbarProps) {
   const [isActive, setIsActive] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [lastSelected, setLastSelected] = useState<ElementContext | null>(null);
@@ -26,6 +27,12 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
   const [imageUrl, setImageUrl] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkText, setLinkText] = useState('');
+  
+  // YouTube Scraper states
+  const [isYoutubeModalOpen, setIsYoutubeModalOpen] = useState(false);
+  const [playlistUrl, setPlaylistUrl] = useState('https://www.youtube.com/playlist?list=PLQHQ_Dw8UrH84Kfq_o2Bkvg5KoZffRkPn');
+  const [scraperResults, setScraperResults] = useState<{ title: string, videos: any[] } | null>(null);
+  const [isScraping, setIsScraping] = useState(false);
   
   // Notification modal state
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -176,6 +183,35 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
     }
   };
 
+  const handleYoutubeScrape = async () => {
+    if (!playlistUrl) {
+      showNotification('error', 'YouTube Playlist URL is required');
+      return;
+    }
+
+    setIsScraping(true);
+    setScraperResults(null);
+    try {
+      const response = await fetch('/api/scrape/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: playlistUrl }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setScraperResults(result.data);
+        showNotification('success', `Successfully scraped ${result.data.videoCount} videos`);
+      } else {
+        showNotification('error', result.error || 'Scraping failed');
+      }
+    } catch (err) {
+      showNotification('error', `Scraping failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const data = event.data as AiSmartEditMessage;
@@ -322,6 +358,13 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
   }, [onElementSelected, isActive, isEditMode, sendMessage, projectId, imageModal, linkModal, showNotification, sourceBaselines]);
+
+  // Sync selected file to iframe
+  useEffect(() => {
+    if (isReady && selectedFile) {
+      sendMessage('AI_SMART_EDIT:SET_FILE', { filePath: selectedFile });
+    }
+  }, [isReady, selectedFile, sendMessage]);
 
   if (!isReady) return null;
 

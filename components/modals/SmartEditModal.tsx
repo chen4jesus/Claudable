@@ -7,26 +7,93 @@ interface SmartEditModalProps {
   onClose: () => void;
   elementContext: ElementContext | null;
   onSubmit: (prompt: string, context: ElementContext) => void;
+  onYoutubeSubmit?: (playlistUrl: string, limit: number, context: ElementContext) => void;
+  onManualSubmit?: (changes: { type: 'html' | 'attr'; value: string; attrName?: string }[], context: ElementContext) => void;
   projectId?: string;
 }
 
-export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, projectId: propProjectId }: SmartEditModalProps) {
+export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, onYoutubeSubmit, onManualSubmit, projectId: propProjectId }: SmartEditModalProps) {
   const params = useParams();
   const projectId = propProjectId || (params?.project_id as string);
   const [prompt, setPrompt] = useState('');
+  const [editMode, setEditMode] = useState<'ai' | 'youtube' | 'manual'>('ai');
+  const [manualHtml, setManualHtml] = useState('');
+  const [manualText, setManualText] = useState('');
+  const [manualHref, setManualHref] = useState('');
+  const [manualSrc, setManualSrc] = useState('');
+  const [manualAlt, setManualAlt] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [youtubeLimit, setYoutubeLimit] = useState(6);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setPrompt('');
+      setYoutubeUrl('');
+      // Heuristic: If selecting a section with "carousel" in it, default to youtube mode
+      if (elementContext?.className.includes('carousel') || elementContext?.id.includes('carousel')) {
+        setEditMode('youtube');
+      } else {
+        setEditMode('ai');
+      }
+      // Initialize manual HTML with current element's inner HTML
+      if (elementContext) {
+        setManualHtml(elementContext.innerHTML || '');
+        setManualText(elementContext.innerText || '');
+        setManualHref(elementContext.attributes?.href || '');
+        setManualSrc(elementContext.attributes?.src || '');
+        setManualAlt(elementContext.attributes?.alt || '');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, elementContext]);
 
   const handleSubmit = () => {
-    if (prompt.trim() && elementContext) {
-      onSubmit(prompt, elementContext);
-      onClose();
+    if (!elementContext) return;
+
+    if (editMode === 'ai') {
+      if (prompt.trim()) {
+        onSubmit(prompt, elementContext);
+        onClose();
+      }
+    } else if (editMode === 'youtube') {
+      if (youtubeUrl.trim() && onYoutubeSubmit) {
+        onYoutubeSubmit(youtubeUrl, youtubeLimit, elementContext);
+        onClose();
+      }
+    } else if (editMode === 'manual') {
+      if (onManualSubmit) {
+        const changes: { type: 'html' | 'attr'; value: string; attrName?: string }[] = [];
+        const isLink = elementContext.tagName === 'a';
+        const isImg = elementContext.tagName === 'img';
+        const isTextOnly = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'li', 'td', 'th', 'label', 'button'].includes(elementContext.tagName);
+
+        if (isTextOnly && manualText !== elementContext.innerText) {
+          changes.push({ type: 'html', value: manualText });
+        } else if (isLink) {
+          if (manualHref !== (elementContext.attributes?.href || '')) {
+            changes.push({ type: 'attr', attrName: 'href', value: manualHref });
+          }
+          if (manualText !== elementContext.innerText) {
+             changes.push({ type: 'html', value: manualText });
+          }
+        } else if (isImg) {
+          if (manualSrc !== (elementContext.attributes?.src || '')) {
+            changes.push({ type: 'attr', attrName: 'src', value: manualSrc });
+          }
+          if (manualAlt !== (elementContext.attributes?.alt || '')) {
+            changes.push({ type: 'attr', attrName: 'alt', value: manualAlt });
+          }
+        } else if (manualHtml !== elementContext.innerHTML) {
+          // Fallback to HTML edit if it's a complex element and HTML changed
+          changes.push({ type: 'html', value: manualHtml });
+        }
+
+        if (changes.length > 0) {
+          onManualSubmit(changes, elementContext);
+        }
+        onClose();
+      }
     }
   };
 
@@ -120,6 +187,40 @@ export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, proj
         </div>
 
         <div className="p-6 overflow-y-auto">
+          {/* Mode Selection Tabs */}
+          <div className="flex border-b border-gray-200 mb-6">
+            <button
+              onClick={() => setEditMode('ai')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                editMode === 'ai' 
+                  ? 'border-blue-600 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              AI Assistant
+            </button>
+            <button
+              onClick={() => setEditMode('youtube')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                editMode === 'youtube' 
+                  ? 'border-blue-600 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              YouTube Scraper
+            </button>
+            <button
+              onClick={() => setEditMode('manual')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                editMode === 'manual' 
+                  ? 'border-blue-600 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Manual Edit (beta)
+            </button>
+          </div>
+
           {/* Element Context Summary */}
           <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono">
             <div className="flex justify-between items-start mb-2">
@@ -139,49 +240,176 @@ export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, proj
             </div>
           </div>
 
-          {/* Prompt Input */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Your Instruction
-            </label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g., Change the background color to blue, increase padding, and make the text larger."
-              className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
-              autoFocus
-            />
-            <div className="text-right text-xs text-gray-400">
-                Cmd+Enter to submit
+          {editMode === 'ai' ? (
+            /* Prompt Input */
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Your Instruction
+              </label>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g., Change the background color to blue, increase padding, and make the text larger."
+                className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                autoFocus
+              />
+              <div className="text-right text-xs text-gray-400">
+                  Cmd+Enter to submit
+              </div>
             </div>
-          </div>
+          ) : editMode === 'youtube' ? (
+            /* YouTube Scraper Form */
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  YouTube Playlist URL
+                </label>
+                <input
+                  type="text"
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/playlist?list=..."
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Max Items to Fetch
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={youtubeLimit}
+                  onChange={(e) => setYoutubeLimit(parseInt(e.target.value) || 1)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <p className="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg border border-blue-100 italic">
+                This will scrape the playlist and replace the target element with a generated carousel.
+              </p>
+            </div>
+          ) : (
+            /* Manual Context-Aware Edit */
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Manual Changes
+                </label>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  Modify attributes or content
+                </span>
+              </div>
+
+              {elementContext.tagName === 'a' && (
+                <>
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Link URL (href)</label>
+                    <input
+                      type="text"
+                      value={manualHref}
+                      onChange={(e) => setManualHref(e.target.value)}
+                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Link Text</label>
+                    <input
+                      type="text"
+                      value={manualText}
+                      onChange={(e) => setManualText(e.target.value)}
+                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Click here"
+                    />
+                  </div>
+                </>
+              )}
+
+              {elementContext.tagName === 'img' && (
+                <>
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Image Source (src)</label>
+                    <input
+                      type="text"
+                      value={manualSrc}
+                      onChange={(e) => setManualSrc(e.target.value)}
+                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                      placeholder="/images/photo.jpg"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Alt Text</label>
+                    <input
+                      type="text"
+                      value={manualAlt}
+                      onChange={(e) => setManualAlt(e.target.value)}
+                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Description of image"
+                    />
+                  </div>
+                </>
+              )}
+
+              {['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'li', 'td', 'th', 'label', 'button'].includes(elementContext.tagName) ? (
+                 <div className="space-y-2">
+                   <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Text Content</label>
+                   <textarea
+                     value={manualText}
+                     onChange={(e) => setManualText(e.target.value)}
+                     className="w-full min-h-[100px] p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                   />
+                 </div>
+              ) : (
+                !['a', 'img'].includes(elementContext.tagName) && (
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Inner HTML</label>
+                    <textarea
+                      value={manualHtml}
+                      onChange={(e) => setManualHtml(e.target.value)}
+                      className="w-full h-48 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-mono text-xs bg-gray-50"
+                    />
+                  </div>
+                )
+              )}
+
+              <p className="text-[10px] text-gray-500 italic mt-4 border-t pt-2">
+                Attributes are preserved. Surgical changes will be applied to the source file.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 flex justify-between gap-3 bg-gray-50 rounded-b-2xl">
           <div className="flex items-center">
-             <input 
-               type="file" 
-               ref={fileInputRef}
-               className="hidden"
-               onChange={handleFileUpload}
-             />
-             <button
-               type="button"
-               onClick={() => fileInputRef.current?.click()}
-               disabled={isUploading || !projectId}
-               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                 isUploading ? 'text-gray-400 cursor-not-allowed' : 
-                 !projectId ? 'text-gray-300 cursor-not-allowed' :
-                 'text-gray-600 hover:bg-gray-200'
-               }`}
-               title={!projectId ? 'Project ID missing' : 'Upload file to prompt'}
-             >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                {isUploading ? 'Uploading...' : 'Attach File'}
-             </button>
+             {editMode === 'ai' && (
+               <>
+                 <input 
+                   type="file" 
+                   ref={fileInputRef}
+                   className="hidden"
+                   onChange={handleFileUpload}
+                 />
+                 <button
+                   type="button"
+                   onClick={() => fileInputRef.current?.click()}
+                   disabled={isUploading || !projectId}
+                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                     isUploading ? 'text-gray-400 cursor-not-allowed' : 
+                     !projectId ? 'text-gray-300 cursor-not-allowed' :
+                     'text-gray-600 hover:bg-gray-200'
+                   }`}
+                   title={!projectId ? 'Project ID missing' : 'Upload file to prompt'}
+                 >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    {isUploading ? 'Uploading...' : 'Attach File'}
+                 </button>
+               </>
+             )}
           </div>
 
           <div className="flex gap-3">
@@ -193,12 +421,24 @@ export function SmartEditModal({ isOpen, onClose, elementContext, onSubmit, proj
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!prompt.trim()}
+              disabled={
+                editMode === 'ai' ? !prompt.trim() : 
+                editMode === 'youtube' ? !youtubeUrl.trim() :
+                false
+              }
               className={`px-4 py-2 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2 ${
-                  !prompt.trim() ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                  (
+                    editMode === 'ai' ? !prompt.trim() : 
+                    editMode === 'youtube' ? !youtubeUrl.trim() :
+                    false
+                  ) ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              <span>Submit Request</span>
+              <span>
+                {editMode === 'ai' ? 'Submit Request' : 
+                 editMode === 'youtube' ? 'Inject Carousel' : 
+                 'Save and Apply'}
+              </span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>

@@ -22,6 +22,11 @@ const yarnCommand = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
 const bunCommand = process.platform === 'win32' ? 'bun.exe' : 'bun';
 const isWindows = process.platform === 'win32';
 
+function getEnvCaseInsensitive(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const k = Object.keys(env).find(k => k.toUpperCase() === key.toUpperCase());
+  return k ? env[k] : undefined;
+}
+
 /**
  * Augment PATH with the Python user bin directory (~/.local/bin on Unix, AppData on Windows).
  * This ensures pip-installed scripts (like uvicorn) are discoverable.
@@ -33,8 +38,8 @@ function augmentPathWithPythonUserBin(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv
   if (isWindows) {
     // On Windows, pip --user installs to %APPDATA%\Python\PythonXX\Scripts
     // We also add %LOCALAPPDATA%\Programs\Python\PythonXX\Scripts for completeness
-    const appData = env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
-    const localAppData = env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
+    const appData = getEnvCaseInsensitive(env, 'APPDATA') || path.join(homeDir, 'AppData', 'Roaming');
+    const localAppData = getEnvCaseInsensitive(env, 'LOCALAPPDATA') || path.join(homeDir, 'AppData', 'Local');
     userBinPath = [
       path.join(appData, 'Python', 'Python312', 'Scripts'),
       path.join(appData, 'Python', 'Python311', 'Scripts'),
@@ -48,14 +53,17 @@ function augmentPathWithPythonUserBin(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv
     userBinPath = path.join(homeDir, '.local', 'bin');
   }
 
-  const existingPath = env.PATH || '';
+  // Case-insensitive Path search for Windows
+  const pathKey = Object.keys(env).find(k => k.toUpperCase() === 'PATH') || 'PATH';
+  const existingPath = env[pathKey] || '';
+
   if (existingPath.includes(userBinPath)) {
     return env; // Already includes the path
   }
 
   return {
     ...env,
-    PATH: `${userBinPath}${path.delimiter}${existingPath}`,
+    [pathKey]: `${userBinPath}${path.delimiter}${existingPath}`,
   };
 }
 
@@ -1692,7 +1700,7 @@ class PreviewManager {
         spawnOptions = {
           cwd: projectPath,
           env: {
-            ...process.env,
+            ...env,
             NODE_ENV: 'development',
           },
           shell: useShell, // Required on Windows to avoid EINVAL
@@ -2297,12 +2305,12 @@ ${scriptContent}
     if (!project) return;
 
     const repoPath = project.repoPath || path.join('data', 'projects', project.id);
-    const projectRoot = path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
+    const projectPath = path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
     
     // Normalize path to ensure consistency
     const normalizedPath = relPath.replace(/\\/g, '/').replace(/^\//, '');
-    const sourcePath = path.join(projectRoot, normalizedPath);
-    const baselinePath = path.join(projectRoot, '.claudable', 'baselines', normalizedPath);
+    const sourcePath = path.join(projectPath, normalizedPath);
+    const baselinePath = path.join(projectPath, '.claudable', 'baselines', normalizedPath);
 
     try {
       // Ensure target directory exists in baselines
@@ -2316,12 +2324,12 @@ ${scriptContent}
 }
 
 const globalPreviewManager = globalThis as unknown as {
-  __claudable_preview_manager_v3__?: PreviewManager;
+  __claudable_preview_manager_v6__?: PreviewManager;
 };
 
 export const previewManager: PreviewManager =
-  globalPreviewManager.__claudable_preview_manager_v3__ ??
-  (globalPreviewManager.__claudable_preview_manager_v3__ = new PreviewManager());
+  globalPreviewManager.__claudable_preview_manager_v6__ ??
+  (globalPreviewManager.__claudable_preview_manager_v6__ = new PreviewManager());
 
 // Register global exit handlers to ensure cleanup on application shutdown
 if (typeof process !== 'undefined') {

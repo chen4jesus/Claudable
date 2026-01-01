@@ -136,7 +136,15 @@
       parent: parent ? { tagName: parent.tagName.toLowerCase(), id: parent.id || '' } : null,
       url: window.location.href,
       route: window.location.pathname,
-      viewport: { width: window.innerWidth, height: window.innerHeight }
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      // Granular attributes for manual editing
+      attributes: {
+        href: el.getAttribute('href') || null,
+        src: el.getAttribute('src') || null,
+        alt: el.getAttribute('alt') || null,
+        title: el.getAttribute('title') || null,
+        value: el.value || null,
+      }
     };
   }
 
@@ -327,6 +335,34 @@
       }
     } catch (err) {
       console.error('[AI Smart Edit] Failed to update image:', err);
+    }
+  }
+
+  function updateElement(srcId, newHtml) {
+    try {
+      const el = document.querySelector(`[data-ai-src-id="${srcId}"]`);
+      if (el) {
+        el.innerHTML = newHtml;
+        // Optionally record change for immediate save-ready state if needed,
+        // but surgical update logic already handles this by diffing on save.
+      }
+    } catch (err) {
+      console.error('[AI Smart Edit] Failed to update element:', err);
+    }
+  }
+
+  function updateElementAttr(srcId, attrName, value) {
+    try {
+      const el = document.querySelector(`[data-ai-src-id="${srcId}"]`);
+      if (el) {
+        if (attrName === 'value') {
+          el.value = value;
+        } else {
+          el.setAttribute(attrName, value);
+        }
+      }
+    } catch (err) {
+      console.error('[AI Smart Edit] Failed to update attribute:', err);
     }
   }
 
@@ -562,6 +598,18 @@
           updateImage(e.data.payload.selector, e.data.payload.src);
         }
         break;
+
+      case `${NAMESPACE}:UPDATE_ELEMENT`:
+        if (e.data.payload) {
+          updateElement(e.data.payload.srcId, e.data.payload.newHtml);
+        }
+        break;
+
+      case `${NAMESPACE}:UPDATE_ATTR`:
+        if (e.data.payload) {
+          updateElementAttr(e.data.payload.srcId, e.data.payload.attrName, e.data.payload.value);
+        }
+        break;
         
       case `${NAMESPACE}:UPDATE_LINK`:
         if (e.data.payload) {
@@ -577,6 +625,13 @@
         if (e.data.payload) {
           sourceBaselines.set(e.data.payload.srcId, e.data.payload.fragment);
           console.log(`[AI Smart Edit] Received source baseline for ${e.data.payload.srcId}`);
+        }
+        break;
+
+      case `${NAMESPACE}:SET_FILE`:
+        if (e.data.payload && e.data.payload.filePath) {
+          window.__AI_SMART_EDIT_FILE__ = e.data.payload.filePath;
+          console.log(`[AI Smart Edit] Set target file to: ${e.data.payload.filePath}`);
         }
         break;
     }

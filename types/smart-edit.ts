@@ -11,8 +11,10 @@ export type AiSmartEditMessage =
   | { type: 'AI_SMART_EDIT:IMAGE_CLICK'; payload: ImageClickContext }
   | { type: 'AI_SMART_EDIT:LINK_CLICK'; payload: LinkClickContext }
   | { type: 'AI_SMART_EDIT:UPDATE_IMAGE'; payload: { selector: string; src: string } }
+  | { type: 'AI_SMART_EDIT:UPDATE_ATTR'; payload: { srcId: string; attrName: string; value: string } }
   | { type: 'AI_SMART_EDIT:UPDATE_LINK'; payload: { selector: string; href: string; text?: string } }
   | { type: 'AI_SMART_EDIT:SAVE_PAGE' }
+  | { type: 'AI_SMART_EDIT:UPDATE_ELEMENT'; payload: { srcId: string; newHtml: string } }
   | { type: 'AI_SMART_EDIT:PAGE_CONTENT'; payload: { html: string; route: string; filePath?: string; changes?: any[] } }
   | { type: 'AI_SMART_EDIT:SAVE_RESULT'; payload: { success: boolean; error?: string } }
   | { type: 'AI_SMART_EDIT:READY' }
@@ -76,5 +78,12 @@ export interface ElementContext {
   viewport: {
     width: number;
     height: number;
+  };
+  attributes?: {
+    href?: string | null;
+    src?: string | null;
+    alt?: string | null;
+    title?: string | null;
+    value?: string | null;
   };
 }
