@@ -412,6 +412,7 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTarget, setUploadTarget] = useState<string>('.');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+  const [isRefreshingTree, setIsRefreshingTree] = useState(false);
 
   // Status Modal State
   const [statusModal, setStatusModal] = useState<{
@@ -1244,6 +1245,7 @@ const persistProjectPreferences = useCallback(
   }, [projectId]);
 
   const loadTree = useCallback(async (dir = '.') => {
+    setIsRefreshingTree(true);
     try {
       const r = await fetch(`${API_BASE}/api/repo/${projectId}/tree?dir=${encodeURIComponent(dir)}`);
       const data = await r.json();
@@ -1252,21 +1254,26 @@ const persistProjectPreferences = useCallback(
       if (Array.isArray(data)) {
         setTree(data);
         
-        // Load contents for all directories in the root
+        // Load contents for all directories in the root and their expanded children
         const newFolderContents = new Map();
         
-        // Process each directory
-        for (const entry of data) {
-          if (entry.type === 'dir') {
-            try {
-              const subContents = await loadSubdirectory(entry.path);
-              newFolderContents.set(entry.path, subContents);
-            } catch (err) {
-              console.error(`Failed to load contents for ${entry.path}:`, err);
+        const refreshExpandedRecursively = async (entries: Entry[]) => {
+          for (const entry of entries) {
+            if (entry.type === 'dir' && (expandedFolders.has(entry.path) || entry.path.split('/').length === 1)) {
+              try {
+                const subContents = await loadSubdirectory(entry.path);
+                newFolderContents.set(entry.path, subContents);
+                if (expandedFolders.has(entry.path)) {
+                  await refreshExpandedRecursively(subContents);
+                }
+              } catch (err) {
+                console.error(`Failed to load contents for ${entry.path}:`, err);
+              }
             }
           }
-        }
-        
+        };
+
+        await refreshExpandedRecursively(data);
         setFolderContents(newFolderContents);
       } else {
         console.error('Tree data is not an array:', data);
@@ -1277,8 +1284,10 @@ const persistProjectPreferences = useCallback(
     } catch (error) {
       console.error('Failed to load tree:', error);
       setTree([]);
+    } finally {
+      setIsRefreshingTree(false);
     }
-  }, [projectId, loadSubdirectory]);
+  }, [projectId, loadSubdirectory, expandedFolders]);
 
   // Load subdirectory contents
 
@@ -3238,6 +3247,14 @@ const persistProjectPreferences = useCallback(
                       <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
                         <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Explorer</span>
+                          <button
+                            onClick={() => loadTree('.')}
+                            disabled={isRefreshingTree}
+                            className={`p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-all ${isRefreshingTree ? 'animate-spin' : ''}`}
+                            title="Refresh project files"
+                          >
+                            <FaSync size={12} />
+                          </button>
                         </div>
                         <div 
                           className={`flex-1 overflow-y-auto bg-gray-50 custom-scrollbar transition-all ${

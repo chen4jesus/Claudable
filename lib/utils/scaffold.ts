@@ -360,9 +360,12 @@ function resolvePort(preferredPort) {
 
   console.debug(\`🚀 Starting Next.js dev server on \${url}\`);
 
+  const nextBin = path.join(projectRoot, 'node_modules', '.bin', isWindows ? 'next.cmd' : 'next');
+  const useLocalBin = fs.existsSync(nextBin);
+
   const child = spawn(
-    'npx',
-    ['next', 'dev', '--port', String(port), ...passthrough],
+    useLocalBin ? nextBin : 'npx',
+    useLocalBin ? ['dev', '--port', String(port), ...passthrough] : ['next', 'dev', '--port', String(port), ...passthrough],
     {
       cwd: projectRoot,
       stdio: 'inherit',
@@ -528,9 +531,12 @@ if (serveTarget === '.') {
 console.debug(\`🚀 Starting static file server on port \${port}\`);
 console.debug(\`📂 Serving directory: \${serveTarget}\`);
 
+const serveBin = path.join(projectRoot, 'node_modules', '.bin', isWindows ? 'serve.cmd' : 'serve');
+const useLocalBin = fs.existsSync(serveBin);
+
 const child = spawn(
-  'npx',
-  ['serve', '-s', serveTarget, '-p', String(port), '-l', 'tcp://0.0.0.0:' + port],
+  useLocalBin ? serveBin : 'npx',
+  useLocalBin ? ['-s', serveTarget, '-p', String(port), '-l', 'tcp://0.0.0.0:' + port] : ['serve', '-s', serveTarget, '-p', String(port), '-l', 'tcp://0.0.0.0:' + port],
   {
     cwd: projectRoot,
     stdio: 'inherit',
