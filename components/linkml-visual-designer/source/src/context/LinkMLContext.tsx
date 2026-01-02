@@ -10,7 +10,7 @@ interface LinkMLState {
 
 interface LinkMLContextType {
   state: LinkMLState;
-  setModel: (model: LinkMLModel) => void;
+  setModel: (model: LinkMLModel | ((prev: LinkMLModel) => LinkMLModel)) => void;
   setNodes: (nodes: Node[] | ((nds: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((eds: Edge[]) => Edge[])) => void;
 }
