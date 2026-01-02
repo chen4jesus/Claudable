@@ -11,3 +11,5 @@ coverage
 .idea
 .vscode
 *.log
+data/
+prisma/data/
