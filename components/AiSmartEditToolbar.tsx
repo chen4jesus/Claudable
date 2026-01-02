@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ChevronLeft, ChevronRight, MousePointer2, Pencil, Save, Youtube, 
+  X, CheckCircle2, AlertCircle, Info 
+} from 'lucide-react';
 import { AiSmartEditMessage, ElementContext, ImageClickContext, LinkClickContext } from '../types/smart-edit';
 
 
@@ -366,90 +371,123 @@ export function AiSmartEditToolbar({ targetIframeRef, onElementSelected, project
     }
   }, [isReady, selectedFile, sendMessage]);
 
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (!isReady) return null;
 
   return (
     <>
-      <div className={`fixed right-4 z-50 flex gap-2 ${isAtBottom ? 'top-24 flex-col-reverse' : 'bottom-4 flex-col items-end'}`}>
-        {lastSelected && !isEditMode && (
-          <div className="bg-white p-4 rounded-lg shadow-xl border border-gray-200 max-w-sm text-xs font-mono overflow-auto max-h-60">
-            <div className="font-bold mb-2">Selected Element</div>
-            <div className="mb-1"><span className="text-gray-500">Tag:</span> {lastSelected.tagName}</div>
-            <div className="mb-1"><span className="text-gray-500">Source ID:</span> {lastSelected.srcId || 'N/A'}</div>
-            <div className="mb-1"><span className="text-gray-500">Class:</span> {lastSelected.className || 'N/A'}</div>
-            <div className="mb-1"><span className="text-gray-500">Text:</span> {lastSelected.innerText.substring(0, 50)}...</div>
-            <div className="mb-1"><span className="text-gray-500">Selector:</span> {lastSelected.selector}</div>
+      <div className={`fixed right-0 z-50 flex items-center transition-all duration-300 ${isAtBottom ? 'top-24' : 'bottom-12'}`}>
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ x: 100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 100, opacity: 0 }}
+              transition={{ type: "spring", damping: 20, stiffness: 200 }}
+              className="flex flex-col items-end gap-3 mr-4"
+            >
+              {lastSelected && !isEditMode && (
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-white/20 max-w-sm text-[11px] font-mono overflow-auto max-h-60"
+                >
+                  <div className="font-bold mb-2 flex items-center gap-2 text-indigo-600">
+                    <Info size={14} /> Selected Element
+                  </div>
+                  <div className="space-y-1 text-gray-600">
+                    <div><span className="text-gray-400">Tag:</span> {lastSelected.tagName}</div>
+                    <div><span className="text-gray-400">Source ID:</span> {lastSelected.srcId || 'N/A'}</div>
+                    <div className="truncate"><span className="text-gray-400">Text:</span> {lastSelected.innerText.substring(0, 50)}...</div>
+                    <div className="truncate"><span className="text-gray-400">Selector:</span> {lastSelected.selector}</div>
+                  </div>
+                </motion.div>
+              )}
+
+              <div className="flex flex-col gap-2 bg-white/40 backdrop-blur-xl p-2 rounded-3xl border border-white/40 shadow-2xl">
+                {/* Save Button - Only show in edit mode */}
+                {isEditMode && (
+                  <button
+                    onClick={handleSavePage}
+                    disabled={isSaving}
+                    className={`h-11 px-6 rounded-2xl font-bold transition-all shadow-lg flex items-center gap-2 ${
+                        isSaving
+                          ? 'bg-gray-400 text-white cursor-wait'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-emerald-200 active:scale-95'
+                      }`}
+                  >
+                    {isSaving ? (
+                      <span className="animate-spin text-lg">↻</span>
+                    ) : (
+                      <Save className="text-lg" />
+                    )}
+                    <span>Save Changes</span>
+                  </button>
+                )}
+
+                <div className="flex gap-2">
+                  {/* Edit Mode Toggle */}
+                  <button
+                    onClick={toggleEditMode}
+                    className={`h-11 px-5 rounded-2xl font-bold transition-all shadow-lg flex items-center gap-2 ${
+                      isEditMode
+                        ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-200'
+                        : 'bg-gray-800/90 text-white hover:bg-black active:scale-95'
+                    }`}
+                  >
+                    {isEditMode ? (
+                      <div className="w-2 h-2 rounded-full bg-yellow-300 animate-pulse ring-4 ring-yellow-300/30" />
+                    ) : (
+                      <Pencil className="text-lg" />
+                    )}
+                    <span>{isEditMode ? 'Editing...' : 'Edit Mode'}</span>
+                  </button>
+
+                  {/* AI Mode Toggle */}
+                  <button
+                    onClick={toggleSelectionMode}
+                    className={`h-11 px-5 rounded-2xl font-bold transition-all shadow-lg flex items-center gap-2 ${
+                      isActive && !isEditMode
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+                        : 'bg-gray-800/90 text-white hover:bg-black active:scale-95'
+                    }`}
+                  >
+                    {isActive && !isEditMode ? (
+                      <div className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse ring-4 ring-cyan-300/30" />
+                    ) : (
+                      <MousePointer2 className="text-sm" />
+                    )}
+                    <span>{isActive && !isEditMode ? 'AI Active' : 'AI Mode'}</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Floating Handle */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={`group relative flex items-center justify-center w-10 h-24 bg-gray-900 text-white rounded-l-3xl shadow-[-10px_0_20px_rgba(0,0,0,0.15)] border-l border-y border-white/20 transition-all hover:w-12 active:scale-95 ${
+            isExpanded ? 'bg-indigo-600 border-indigo-400' : 'hover:bg-gray-800'
+          }`}
+        >
+          <div className="flex flex-col items-center gap-1">
+            {isExpanded ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            <div className="[writing-mode:vertical-lr] text-[10px] font-black uppercase tracking-[0.2em] rotate-180 opacity-40 group-hover:opacity-100 transition-opacity">
+              {isEditMode ? 'Edit' : (isActive ? 'AI' : 'Tools')}
+            </div>
           </div>
-        )}
-
-        {/* Save Button - Only show in edit mode */}
-        {isEditMode && (
-          <button
-            onClick={handleSavePage}
-            disabled={isSaving}
-            className={`px-4 py-2 rounded-full font-semibold transition-colors shadow-lg flex items-center gap-2 ${
-                isSaving
-                  ? 'bg-gray-400 text-white cursor-wait'
-                  : 'bg-green-600 text-white hover:bg-green-700'
-              }`}
-          >
-            {isSaving ? (
-              <>
-                <span className="animate-spin">↻</span> Saving...
-              </>
-            ) : (
-              <>
-                <span>💾</span> Save Changes
-              </>
-            )}
-          </button>
-        )}
-
-        {/* Button Row */}
-        <div className="flex gap-2">
-          {/* Edit Mode Toggle */}
-          <button
-            onClick={toggleEditMode}
-            className={`px-4 py-2 rounded-full font-semibold transition-colors shadow-lg flex items-center gap-2 ${
-              isEditMode
-                ? 'bg-orange-500 text-white hover:bg-orange-600'
-                : 'bg-gray-700 text-white hover:bg-gray-800'
-            }`}
-          >
-            {isEditMode ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-yellow-300 animate-pulse"/>
-                Edit Mode Active
-              </>
-            ) : (
-              <>
-                <span>✏️</span> Edit Mode
-              </>
-            )}
-          </button>
-
-          {/* Selection Mode Toggle */}
-          <button
-            onClick={toggleSelectionMode}
-            className={`px-4 py-2 rounded-full font-semibold transition-colors shadow-lg flex items-center gap-2 ${
-              isActive && !isEditMode
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-800 text-white hover:bg-gray-900'
-            }`}
-          >
-            {isActive && !isEditMode ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse"/>
-                AI Mode Active
-              </>
-            ) : (
-              <>
-                <span>⚡</span> AI Mode
-              </>
-            )}
-          </button>
-
-        </div>
+          
+          {/* Active indicators on the handle when collapsed */}
+          {!isExpanded && (isActive || isEditMode) && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-col gap-1">
+              {isEditMode && <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)]" />}
+              {isActive && !isEditMode && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />}
+            </div>
+          )}
+        </button>
       </div>
 
       {/* Image Editor Modal - Only render if ready? Actually if modals are open we probably want them to stay if connection lost? No, if connection lost, we can't save. So hiding everything is safer. */ }

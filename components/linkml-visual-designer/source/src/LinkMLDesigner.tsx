@@ -65,6 +65,38 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
   const [previewTab, setPreviewTab] = useState<'json' | 'sql'>('json');
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(!!projectId);
+
+  // Load initial model from server if projectId is present
+  useEffect(() => {
+    if (!projectId) return;
+
+    const loadInitialModel = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/files/content?path=public/schemas/model.json`);
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.data && result.data.content) {
+            try {
+              const loadedModel = JSON.parse(result.data.content);
+              if (loadedModel.classes && loadedModel.slots) {
+                setModel(loadedModel);
+                console.log('[DataDesigner] Successfully loaded existing model.json');
+              }
+            } catch (e) {
+              console.error('[DataDesigner] Failed to parse existing model.json:', e);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[DataDesigner] Error fetching initial model:', err);
+      } finally {
+        setIsLoadingInitial(false);
+      }
+    };
+
+    loadInitialModel();
+  }, [projectId, setModel]);
 
   // Notify parent of updates
   useEffect(() => {
@@ -326,6 +358,15 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
       if (e.target) e.target.value = ''; // Reset input
     }
   };
+
+  if (isLoadingInitial) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full w-full bg-[#0b0e14] text-white">
+        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-400 font-medium">Checking for existing schema...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full bg-[#0b0e14] overflow-hidden font-sans text-white">
