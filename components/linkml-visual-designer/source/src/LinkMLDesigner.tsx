@@ -21,6 +21,7 @@ import { Code, Database, FileJson, LayoutDashboard, Plus } from 'lucide-react';
 import { ClassNode } from './components/ClassNode';
 import { useLinkML } from './context/LinkMLContext';
 import { Upload as UploadIcon, Save } from 'lucide-react';
+import { Modal } from './components/Modal';
 
 // Default model if none provided
 const DEFAULT_MODEL: LinkMLModel = {
@@ -66,6 +67,22 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isLoadingInitial, setIsLoadingInitial] = useState(!!projectId);
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'success' | 'error' | 'confirm';
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
+
+  const showModal = (title: string, message: string, type: 'info' | 'success' | 'error' | 'confirm' = 'info', onConfirm?: () => void) => {
+    setModalState({ isOpen: true, title, message, type, onConfirm });
+  };
 
   // Load initial model from server if projectId is present
   useEffect(() => {
@@ -142,6 +159,67 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
     });
   };
 
+  const onDeleteClass = (className: string) => {
+    if (readonly) return;
+    
+    showModal(
+      'Delete Class', 
+      `Are you sure you want to delete ${className}? This will also remove all its properties and relationships.`, 
+      'confirm',
+      () => {
+        setModel(prev => {
+          const newClasses = { ...prev.classes };
+          const newSlots = { ...prev.slots };
+          
+          // 1. Identify slots to delete (slots owned by this class)
+          const slotsToDelete = new Set(newClasses[className]?.slots || []);
+          
+          // 2. Remove the class itself
+          delete newClasses[className];
+          
+          // 3. Scan other classes for relationships (slots pointing to this class)
+          Object.keys(newClasses).forEach(cName => {
+            const cls = newClasses[cName];
+            const initialSlotCount = cls.slots.length;
+            
+            // Filter out slots that reference the deleted class
+            const remainingSlots = cls.slots.filter(slotId => {
+              const slot = newSlots[slotId];
+              const isRelationshipToDeleted = slot && slot.range === className;
+              if (isRelationshipToDeleted) {
+                slotsToDelete.add(slotId);
+                return false;
+              }
+              return true;
+            });
+            
+            if (remainingSlots.length !== initialSlotCount) {
+              newClasses[cName] = {
+                ...cls,
+                slots: remainingSlots
+              };
+            }
+
+            // Handle inheritance (is_a)
+            if (cls.is_a === className) {
+              newClasses[cName] = {
+                ...newClasses[cName] || cls,
+                is_a: undefined
+              };
+            }
+          });
+          
+          // 4. Delete the identified slots
+          slotsToDelete.forEach(slotId => {
+            delete newSlots[slotId];
+          });
+          
+          return { ...prev, classes: newClasses, slots: newSlots };
+        });
+      }
+    );
+  };
+
   const onUpdateSlot = (_className: string, slotId: string, updates: Partial<LinkMLSlot>) => {
     if (readonly) return;
     setModel(prev => {
@@ -202,6 +280,7 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
             onUpdateSlot,
             onAddSlot,
             onDeleteSlot,
+            onDeleteClass,
             allClassNames: Object.keys(model.classes)
           },
           draggable: !readonly,
@@ -279,7 +358,11 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
 
   const addClass = () => {
     if (readonly) return;
-    const newClassName = `NewClass${Object.values(model.classes).length + 1}`;
+    let counter = Object.values(model.classes).length + 1;
+    let newClassName = `NewClass${counter}`;
+    while (model.classes[newClassName]) {
+      newClassName = `NewClass${++counter}`;
+    }
     const idSlotId = `${newClassName}.id`;
     setModel(prev => ({
       ...prev,
@@ -328,10 +411,10 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
         throw new Error(`SQL: ${errorData.error || 'Failed to save SQL'}`);
       }
 
-      alert('Design saved successfully to public/schemas/ (model.json and model.sql)');
+      showModal('Success', 'Design saved successfully to public/schemas/ (model.json and model.sql)', 'success');
     } catch (err: any) {
       console.error('Save error:', err);
-      alert(`Error saving design: ${err.message || 'Unknown error'}`);
+      showModal('Save Error', `Error saving design: ${err.message || 'Unknown error'}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -346,13 +429,13 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
       const imported = JSON.parse(text);
       if (imported.name && imported.classes && imported.slots) {
         setModel(imported);
-        alert('Design imported successfully');
+        showModal('Import Success', 'Design imported successfully', 'success');
       } else {
-        alert('Invalid design file format');
+        showModal('Import Error', 'Invalid design file format', 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Error importing design');
+      showModal('Import Error', 'Error importing design', 'error');
     } finally {
       setIsImporting(false);
       if (e.target) e.target.value = ''; // Reset input
@@ -430,6 +513,15 @@ export const LinkMLDesigner: React.FC<LinkMLDesignerProps> = ({
           <Controls className="bg-white/10 border-white/20" />
         </ReactFlow>
       </div>
+
+      <Modal 
+        isOpen={modalState.isOpen}
+        onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={modalState.onConfirm}
+        title={modalState.title}
+        message={modalState.message}
+        type={modalState.type}
+      />
 
       {/* Right: Real-time Previews - Optional? Keeping it for now as part of the tool */}
       <div className="w-[450px] flex flex-col glass-morphism border-l border-white/10">

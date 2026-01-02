@@ -15,6 +15,7 @@ export const ClassNode = ({ data, selected }: { id: string, selected?: boolean, 
   onUpdateSlot: (className: string, slotId: string, updates: Partial<LinkMLSlot>) => void,
   onAddSlot: (className: string) => void,
   onDeleteSlot: (className: string, slotId: string) => void,
+  onDeleteClass: (className: string) => void,
   allClassNames: string[]
 } }) => {
   const [isEditingName, setIsEditingName] = useState(false);
@@ -56,8 +57,16 @@ export const ClassNode = ({ data, selected }: { id: string, selected?: boolean, 
            <button 
             onClick={() => data.onAddSlot(data.classDef.name)}
             className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/10 rounded"
+            title="Add field"
           >
             <Plus className="w-4 h-4 text-primary" />
+          </button>
+          <button 
+            onClick={() => data.onDeleteClass(data.classDef.name)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/20 rounded"
+            title="Delete class"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
           </button>
           <Settings2 className="w-4 h-4 text-muted-foreground cursor-pointer" />
         </div>
