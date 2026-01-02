@@ -4,6 +4,13 @@ import { getProjectById } from './project';
 import { tagContentWithSourceIds } from './smart-edit-utils';
 import { previewManager } from './preview';
 
+export interface YouTubeVideo {
+  title: string;
+  author: string;
+  date: string;
+  link: string;
+}
+
 /**
  * Scrape a specific video page to get the precise upload date.
  */
@@ -81,7 +88,7 @@ export async function scrapeYouTubePlaylist(url: string, limit: number = 6) {
     }
 
     const videos = contents
-      .map((item: any) => {
+      .map((item: any): YouTubeVideo | null => {
         if (!item.playlistVideoRenderer) return null;
         const v = item.playlistVideoRenderer;
         return {
@@ -91,13 +98,13 @@ export async function scrapeYouTubePlaylist(url: string, limit: number = 6) {
           link: `https://www.youtube.com/watch?v=${v.videoId}`,
         };
       })
-      .filter((v: any) => v !== null)
+      .filter((v: YouTubeVideo | null): v is YouTubeVideo => v !== null)
       .slice(0, limit);
 
     // Enhancement: Fetch precise dates for each video
     console.log(`[YouTubeService] Fetching precise dates for ${videos.length} videos...`);
-    const enhancedVideos = await Promise.all(
-      videos.map(async (v) => {
+    const enhancedVideos: YouTubeVideo[] = await Promise.all(
+      videos.map(async (v: YouTubeVideo) => {
         const preciseDate = await scrapeVideoDate(v.link);
         return {
           ...v,
@@ -116,8 +123,8 @@ export async function scrapeYouTubePlaylist(url: string, limit: number = 6) {
 /**
  * Generate the HTML for a carousel section based on a list of videos (fallback/default).
  */
-export function generateCarouselHtml(videos: any[]) {
-  const itemsHtml = videos.map((v, i) => `
+export function generateCarouselHtml(videos: YouTubeVideo[]) {
+  const itemsHtml = videos.map((v: YouTubeVideo, i: number) => `
                         <!-- Item ${i + 1} -->
                         <div class="carousel-item" style="flex: 0 0 calc(33.333% - 14px); box-sizing: border-box;">
                             <div class="card" style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; height: 100%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -208,7 +215,7 @@ export function generateCarouselHtml(videos: any[]) {
 /**
  * Apply video data to an HTML template snippet.
  */
-function applyVideoToTemplate(template: string, video: any): string {
+function applyVideoToTemplate(template: string, video: YouTubeVideo): string {
   // Strip existing data-ai-src-id to ensure fresh ones are generated
   let result = template.replace(/\s*data-ai-src-id=["'][^"']*["']/g, '');
 
