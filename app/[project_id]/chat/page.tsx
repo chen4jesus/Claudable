@@ -5,7 +5,7 @@ import { MotionDiv, MotionH3, MotionP, MotionButton } from '@/lib/motion';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight, FaRedo } from 'react-icons/fa';
-import { ExternalLink, Trash2, Pencil, LogOut, Upload } from 'lucide-react';
+import { ExternalLink, Trash2, Pencil, LogOut, Upload, Maximize2, Minimize2, Minus } from 'lucide-react';
 import { SiTypescript, SiGo, SiRuby, SiSvelte, SiJson, SiYaml, SiCplusplus } from 'react-icons/si';
 import { VscJson } from 'react-icons/vsc';
 import ChatLog from '@/components/chat/ChatLog';
@@ -349,6 +349,8 @@ export default function ChatPage() {
   // View Mode State: 'preview' | 'code'
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
   const [showDataDesigner, setShowDataDesigner] = useState(false);
+  const [isDataDesignerMaximized, setIsDataDesignerMaximized] = useState(false);
+  const [isDataDesignerMinimized, setIsDataDesignerMinimized] = useState(false);
   // Backwards compatibility for existing logic that relies on showPreview
   const showPreview = viewMode === 'preview';
   
@@ -2837,16 +2839,16 @@ const persistProjectPreferences = useCallback(
                     >
                       <span className="w-4 h-4 flex items-center justify-center"><FaCode size={16} /></span>
                     </button>
+                    <button
+                      className="h-9 px-3 flex items-center gap-2 bg-gray-100 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-sm font-medium"
+                      onClick={() => setShowDataDesigner(true)}
+                      title="Data Designer"
+                    > 
+                      <span className="w-4 h-4 flex items-center justify-center"><FaDatabase size={16} /></span>
+                    </button>
                   </div>
 
-                  <button
-                    className="h-9 px-3 flex items-center gap-2 bg-gray-100 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-sm font-medium"
-                    onClick={() => setShowDataDesigner(true)}
-                    title="Data Designer"
-                  >
-                    <span className="w-4 h-4 flex items-center justify-center"><FaDatabase size={14} /></span>
-                    Data Designer
-                  </button>
+                  
                   
                   {/* Center Controls */}
                   {showPreview && previewUrl && (
@@ -3356,9 +3358,11 @@ const persistProjectPreferences = useCallback(
       
 
       {/* Data Designer Modal */}
-      {showDataDesigner && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-[95vw] h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
+      {showDataDesigner && !isDataDesignerMinimized && (
+        <div className={`fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center ${isDataDesignerMaximized ? 'p-0' : 'p-4'}`}>
+          <div className={`bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 transition-all duration-300 ${
+            isDataDesignerMaximized ? 'w-full h-full rounded-none' : 'w-[95vw] h-[90vh]'
+          }`}>
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
@@ -3369,18 +3373,59 @@ const persistProjectPreferences = useCallback(
                   <p className="text-xs text-gray-500 font-medium">Visual Schema Modeler</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowDataDesigner(false)}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-gray-200"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setIsDataDesignerMinimized(true)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-gray-200"
+                  title="Minimize to corner"
+                >
+                  <Minus size={18} />
+                </button>
+                <button 
+                  onClick={() => setIsDataDesignerMaximized(!isDataDesignerMaximized)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-gray-200"
+                  title={isDataDesignerMaximized ? "Restore" : "Maximize"}
+                >
+                  {isDataDesignerMaximized ? <Minimize2 size={18} /> : <Maximize2 size={16} />}
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowDataDesigner(false);
+                    setIsDataDesignerMaximized(false);
+                    setIsDataDesignerMinimized(false);
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-gray-200"
+                  title="Close"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
             </div>
             <div className="flex-1 min-h-0 bg-white">
               <DataDesigner projectId={projectId} />
             </div>
           </div>
         </div>
+      )}
+
+      {/* Minimized Data Designer Floating Trigger */}
+      {showDataDesigner && isDataDesignerMinimized && (
+        <MotionDiv
+          initial={{ opacity: 0, scale: 0.8, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="fixed bottom-6 right-6 z-[110]"
+        >
+          <button
+            onClick={() => setIsDataDesignerMinimized(false)}
+            className="group flex items-center gap-3 bg-indigo-600 text-white pl-4 pr-5 py-3 rounded-2xl shadow-2xl hover:bg-indigo-700 transition-all font-medium border border-white/20 active:scale-95"
+          >
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">
+              <FaDatabase size={14} />
+            </div>
+            <span className="text-sm tracking-tight">Restore Data Designer</span>
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+          </button>
+        </MotionDiv>
       )}
 
       {/* Publish Modal */}
