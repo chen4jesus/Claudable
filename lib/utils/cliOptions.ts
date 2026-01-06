@@ -11,7 +11,7 @@ const isActiveCliId = (value: string): value is ActiveCliId => {
   return ACTIVE_CLI_ID_SET.has(value as ActiveCliId);
 };
 
-export const DEFAULT_ACTIVE_CLI: ActiveCliId = 'claude';
+export const DEFAULT_ACTIVE_CLI: ActiveCliId = 'glm';
 
 type ActiveCliOption = CLIOption & { id: ActiveCliId };
 
