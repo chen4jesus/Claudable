@@ -16,9 +16,12 @@ export interface YouTubeVideo {
  */
 async function scrapeVideoDate(url: string): Promise<string> {
   try {
-    const response = await fetch(url, {
+    const separator = url.includes('?') ? '&' : '?';
+    const localizedUrl = `${url}${separator}hl=en-US`;
+    const response = await fetch(localizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
     });
     if (!response.ok) return 'Unknown Date';
@@ -64,9 +67,12 @@ export async function scrapeYouTubePlaylist(url: string, limit: number = 6) {
       throw new Error('Invalid YouTube playlist URL');
     }
 
-    const response = await fetch(url, {
+    const separator = url.includes('?') ? '&' : '?';
+    const localizedUrl = `${url}${separator}hl=en-US`;
+    const response = await fetch(localizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
     });
 
