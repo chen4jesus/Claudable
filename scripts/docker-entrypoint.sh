@@ -7,9 +7,9 @@ CLAUDE_JSON_FILE="$HOME/.claude.json"
 API_BASE_URL="https://api.z.ai/api/anthropic"
 API_TIMEOUT_MS=3000000
 
-ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-4.5-air"
-ANTHROPIC_DEFAULT_SONNET_MODEL="glm-4.7"
-ANTHROPIC_DEFAULT_OPUS_MODEL="glm-4.7"
+ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-4.7"
+ANTHROPIC_DEFAULT_SONNET_MODEL="glm-5"
+ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5"
 
 # If running as root, fix permissions and drop privileges
 if [ "$(id -u)" = '0' ]; then

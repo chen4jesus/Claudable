@@ -11,7 +11,7 @@ import { toChatMessage, normalizeChatContent } from '@/lib/serializers/client/ch
 import { toRelativePath } from '@/lib/utils/path';
 import { v4 as uuidv4 } from 'uuid';
 
-type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
+type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed' | 'Loaded';
 
 type ToolExpansionState = {
   expanded: boolean;
@@ -51,6 +51,8 @@ const TOOL_NAME_ACTION_MAP: Record<string, ToolAction> = {
   todo_write: 'Generated',
   todo: 'Generated',
   plan_write: 'Generated',
+  load_skills: 'Loaded',
+  skills_loaded: 'Loaded',
 };
 
 const normalizeAction = (value: unknown): ToolAction | undefined => {
@@ -91,6 +93,9 @@ const normalizeAction = (value: unknown): ToolAction | undefined => {
     candidate.includes('command')
   ) {
     return 'Executed';
+  }
+  if (candidate.includes('load') || candidate.includes('skills')) {
+    return 'Loaded';
   }
   return undefined;
 };

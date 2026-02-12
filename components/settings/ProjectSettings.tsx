@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaCog, FaRobot, FaLock, FaPlug } from 'react-icons/fa';
-import { Database } from 'lucide-react';
+import { Database, Sparkles } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import { GeneralSettings } from './GeneralSettings';
 import { AIAssistantSettings } from './AIAssistantSettings';
@@ -12,6 +12,7 @@ import { EnvironmentSettings } from './EnvironmentSettings';
 import { ServiceSettings } from './ServiceSettings';
 import GlobalSettings from './GlobalSettings';
 import { TerraformSettings } from './TerraformSettings';
+import { SkillsSettings } from './SkillsSettings';
 
 interface ProjectSettingsProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ interface ProjectSettingsProps {
   onProjectUpdated?: (update: { name: string; description?: string | null }) => void;
 }
 
-type SettingsTab = 'general' | 'ai-assistant' | 'environment' | 'services' | 'infrastructure';
+type SettingsTab = 'general' | 'ai-assistant' | 'skills' | 'environment' | 'services' | 'infrastructure';
 
 export function ProjectSettings({
   isOpen,
@@ -49,6 +50,12 @@ export function ProjectSettings({
           id: 'ai-assistant' as SettingsTab,
           label: 'Agent',
           icon: <span className="w-4 h-4 inline-flex"><FaRobot /></span>,
+        },
+        {
+          id: 'skills' as SettingsTab,
+          label: 'Skills',
+          icon: <span className="w-4 h-4 inline-flex"><Sparkles className="w-4 h-4" /></span>,
+          hidden: !isProjectScoped,
         },
         {
           id: 'environment' as SettingsTab,
@@ -154,6 +161,10 @@ export function ProjectSettings({
           
           {activeTab === 'ai-assistant' && (
             <AIAssistantSettings projectId={projectId} />
+          )}
+
+          {activeTab === 'skills' && isProjectScoped && (
+            <SkillsSettings projectId={projectId} />
           )}
           
           {activeTab === 'environment' && (

@@ -33,6 +33,7 @@ import {
 } from '@/lib/services/user-requests';
 import { serializeMessage, createRealtimeMessage } from '@/lib/serializers/chat';
 import { validateSafePath } from '@/lib/services/security';
+import { getActiveSkillsForProject } from '@/lib/services/skills';
 
 type CursorEvent = {
   type?: string;
@@ -612,7 +613,33 @@ async function executeCursor(
 
 User request:
 ${instruction.trim()}`;
-  const finalPrompt = await appendProjectContext(basePrompt, repoPath);
+
+  // Load and inject skills into prompt
+  let skillsSection = '';
+  try {
+    const activeSkills = await getActiveSkillsForProject(projectId);
+    if (activeSkills.length > 0) {
+      const skillNames = activeSkills.map(s => s.name).join(', ');
+      console.info(`[CursorService] 📚 Loading ${activeSkills.length} skills for project ${projectId}: ${skillNames}`);
+      
+      await dispatchToolMessage(
+        projectId,
+        `Loaded ${activeSkills.length} skills: ${skillNames}`,
+        { toolName: 'Skills', action: 'Loaded', filePath: 'active skills' },
+        requestId,
+        'tool_use'
+      );
+
+      skillsSection = '\n\n# Active Skills\n\n' + activeSkills
+        .map(skill => `## Skill: ${skill.name}\n${skill.description ? `> ${skill.description}\n\n` : ''}${skill.content}`)
+        .join('\n\n---\n\n');
+    }
+  } catch (error) {
+    console.warn(`[CursorService] Failed to load skills for project ${projectId}:`, error);
+  }
+
+  const promptWithSkills = skillsSection ? `${basePrompt}${skillsSection}` : basePrompt;
+  const finalPrompt = await appendProjectContext(promptWithSkills, repoPath);
 
   const project = await getProjectById(projectId);
   const storedSessionId =

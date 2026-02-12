@@ -21,6 +21,7 @@ import {
 } from '@/lib/services/user-requests';
 import { serializeMessage, createRealtimeMessage } from '@/lib/serializers/chat';
 import { validateSafePath, validateProjectRootAccess } from '@/lib/services/security';
+import { getActiveSkillsForProject } from '@/lib/services/skills';
 
 type ToolAction = 'Write' | 'Edit' | 'Delete' | 'Bash' | 'Info';
 
@@ -504,7 +505,31 @@ async function executeCodex(
 
   publishStatus(projectId, 'ready', requestId, `Codex CLI detected (${modelDisplayName}). Starting execution...`);
 
-  const promptBase = instruction.trim();
+  // Load and inject skills into prompt
+  let skillsSection = '';
+  try {
+    const activeSkills = await getActiveSkillsForProject(projectId);
+    if (activeSkills.length > 0) {
+      const skillNames = activeSkills.map(s => s.name).join(', ');
+      console.info(`[CodexService] 📚 Loading ${activeSkills.length} skills for project ${projectId}: ${skillNames}`);
+      
+      await dispatchToolMessage(
+        projectId,
+        `Loaded ${activeSkills.length} skills: ${skillNames}`,
+        { toolName: 'Skills', action: 'Loaded', filePath: 'active skills' },
+        requestId,
+        { persist: true, messageType: 'tool_use' }
+      );
+
+      skillsSection = '\n\n# Active Skills\n\n' + activeSkills
+        .map(skill => `## Skill: ${skill.name}\n${skill.description ? `> ${skill.description}\n\n` : ''}${skill.content}`)
+        .join('\n\n---\n\n');
+    }
+  } catch (error) {
+    console.warn(`[CodexService] Failed to load skills for project ${projectId}:`, error);
+  }
+
+  const promptBase = (instruction.trim() + skillsSection).trim();
   const promptWithContext = await appendProjectContext(promptBase, repoPath);
 
   const codexConfigArgs = [

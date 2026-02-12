@@ -25,6 +25,7 @@ import {
   markUserRequestAsRunning,
 } from '@/lib/services/user-requests';
 import { validateSafePath } from '@/lib/services/security';
+import { getActiveSkillsForProject } from '@/lib/services/skills';
 
 const AUTO_INSTRUCTIONS = `Act autonomously without waiting for confirmations.
 Use the built-in tools (edit, write_file, read_file, run_shell_command, glob) to modify files directly in the current workspace.
@@ -210,7 +211,38 @@ async function executeQwen(
 
   publishStatus(projectId, 'ready', requestId, `Qwen CLI detected (${modelDisplayName}). Starting execution...`);
 
-  const promptBase = `${AUTO_INSTRUCTIONS}\n\n${instruction}`.trim();
+  // Load and inject skills into prompt
+  let skillsSection = '';
+  try {
+    const activeSkills = await getActiveSkillsForProject(projectId);
+    if (activeSkills.length > 0) {
+      const skillNames = activeSkills.map(s => s.name).join(', ');
+      console.info(`[QwenService] 📚 Loading ${activeSkills.length} skills for project ${projectId}: ${skillNames}`);
+      
+      await createMessage({
+        projectId,
+        role: 'tool',
+        messageType: 'tool_use',
+        content: `Loaded ${activeSkills.length} skills: ${skillNames}`,
+        metadata: { 
+          toolName: 'Skills', 
+          action: 'Loaded', 
+          filePath: 'active skills',
+          cli_type: 'qwen' 
+        },
+        cliSource: 'qwen',
+        requestId,
+      });
+
+      skillsSection = '\n\n# Active Skills\n\n' + activeSkills
+        .map(skill => `## Skill: ${skill.name}\n${skill.description ? `> ${skill.description}\n\n` : ''}${skill.content}`)
+        .join('\n\n---\n\n');
+    }
+  } catch (error) {
+    console.warn(`[QwenService] Failed to load skills for project ${projectId}:`, error);
+  }
+
+  const promptBase = `${AUTO_INSTRUCTIONS}${skillsSection}\n\n${instruction}`.trim();
   const promptWithContext = await appendProjectContext(promptBase, repoPath);
 
   const args: string[] = ['--prompt', promptWithContext, '--approval-mode', 'yolo'];

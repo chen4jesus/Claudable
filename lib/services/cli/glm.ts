@@ -25,6 +25,7 @@ import {
   normalizeGLMModelId,
 } from '@/lib/constants/glmModels';
 import { validateSafePath, createSecurityInterceptor } from '@/lib/services/security';
+import { getActiveSkillsForProject } from '@/lib/services/skills';
 
 const GLM_ANTHROPIC_BASE_URL =
   process.env.GLM_ANTHROPIC_BASE_URL?.trim() || 'https://api.z.ai/api/anthropic';
@@ -363,7 +364,31 @@ async function executeGLM(
 
   publishStatus(projectId, 'ready', requestId, `GLM detected (${modelDisplayName}). Starting execution...`);
 
-  const promptBase = `${AUTO_INSTRUCTIONS}\n\n${instruction}`.trim();
+  // Load and inject skills into prompt
+  let skillsSection = '';
+  try {
+    const activeSkills = await getActiveSkillsForProject(projectId);
+    if (activeSkills.length > 0) {
+      const skillNames = activeSkills.map(s => s.name).join(', ');
+      console.info(`[GLMService] 📚 Loading ${activeSkills.length} skills for project ${projectId}: ${skillNames}`);
+      
+      await persistToolMessage(
+        projectId,
+        `Loaded ${activeSkills.length} skills: ${skillNames}`,
+        { toolName: 'Skills', action: 'Loaded', filePath: 'active skills' },
+        requestId,
+        { persist: true, messageType: 'tool_use' }
+      );
+
+      skillsSection = '\n\n# Active Skills\n\n' + activeSkills
+        .map(skill => `## Skill: ${skill.name}\n${skill.description ? `> ${skill.description}\n\n` : ''}${skill.content}`)
+        .join('\n\n---\n\n');
+    }
+  } catch (error) {
+    console.warn(`[GLMService] Failed to load skills for project ${projectId}:`, error);
+  }
+
+  const promptBase = `${AUTO_INSTRUCTIONS}${skillsSection}\n\n${instruction}`.trim();
   const promptWithContext = await appendProjectContext(promptBase, repoPath);
 
   const accumulator = createStreamAccumulator(requestId);

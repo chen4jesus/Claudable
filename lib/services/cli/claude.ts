@@ -22,6 +22,7 @@ import {
 import { getSystemPromptForProjectType } from '@/lib/constants/projectTypes';
 import { validateSafePath, createSecurityInterceptor } from '@/lib/services/security';
 import { loadGlobalSettings } from '@/lib/services/settings';
+import { getActiveSkillsForProject } from '@/lib/services/skills';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
 
@@ -696,6 +697,41 @@ export async function executeClaude(
     // Send ready notification via SSE
     publishStatus('ready', 'Project verified. Starting AI...');
 
+    // Build system prompt with skills
+    const baseSystemPrompt = getSystemPromptForProjectType(projectType);
+    let finalSystemPrompt = baseSystemPrompt;
+    
+    try {
+      const activeSkills = await getActiveSkillsForProject(projectId);
+      if (activeSkills.length > 0) {
+        const skillNames = activeSkills.map(s => s.name).join(', ');
+        console.info(`[ClaudeService] 📚 Loading ${activeSkills.length} skills for project ${projectId}: ${skillNames}`);
+        
+        // Emit visible tool message for UI
+        await createMessage({
+          projectId,
+          role: 'tool',
+          messageType: 'tool_use',
+          content: `Loaded ${activeSkills.length} skills: ${skillNames}`,
+          metadata: { 
+            toolName: 'Skills', 
+            action: 'Loaded', 
+            filePath: 'active skills',
+            cli_type: 'claude' 
+          },
+          cliSource: 'claude',
+          requestId,
+        });
+
+        const skillsSection = activeSkills
+          .map(skill => `## Skill: ${skill.name}\n${skill.description ? `> ${skill.description}\n\n` : ''}${skill.content}`)
+          .join('\n\n---\n\n');
+        finalSystemPrompt = `${baseSystemPrompt}\n\n# Active Skills\n\n${skillsSection}`;
+      }
+    } catch (error) {
+      console.warn(`[ClaudeService] Failed to load skills for project ${projectId}:`, error);
+    }
+
     // Start Claude Agent SDK query
     console.debug(`[ClaudeService] 🤖 Querying Claude Agent SDK...`);
     console.debug(`[ClaudeService] 📁 Working Directory: ${absoluteProjectPath}`);
@@ -715,7 +751,7 @@ export async function executeClaude(
         settingSources: ['user'],
         permissionMode: 'bypassPermissions',
         canUseTool: createSecurityInterceptor(projectId, [absoluteProjectPath]),
-        systemPrompt: getSystemPromptForProjectType(projectType),
+        systemPrompt: finalSystemPrompt,
         // Capture SDK stderr so we can surface real errors instead of just exit code
         stderr: (data: string) => {
           const line = String(data).trimEnd();
