@@ -81,6 +81,7 @@ async function extractZipToDirectory(
           extractedFolders.push(topLevelFolder);
         }
       }
+    }
   } catch (error) {
     throw new Error(
       `Failed to extract zip. Please install 'adm-zip' package: npm install adm-zip`
