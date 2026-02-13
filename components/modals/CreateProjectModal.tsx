@@ -98,7 +98,7 @@ const CLI_OPTIONS: CLIOption[] = [
       description,
       supportsImages,
     })),
-    features: ['Claude-compatible runtime', 'GLM 4.6 reasoning', 'Text-only mode'],
+    features: ['Claude-compatible runtime', 'GLM 5 reasoning', 'Text-only mode'],
   },
   {
     id: 'gemini',

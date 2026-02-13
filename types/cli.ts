@@ -145,7 +145,7 @@ export const CLI_OPTIONS: CLIOption[] = [
     brandColor: '#1677FF',
     downloadUrl: 'https://docs.z.ai/devpack/tool/claude',
     installCommand: 'zai devpack install claude',
-    features: ['Claude-compatible agent runtime', 'GLM 4.6 reasoning'],
+    features: ['Claude-compatible agent runtime', 'GLM 5 reasoning'],
     models: GLM_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
       id,
       name,

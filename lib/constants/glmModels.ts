@@ -1,4 +1,4 @@
-export type GLMModelId = 'glm-4.7';
+export type GLMModelId = 'glm-5';
 
 export interface GLMModelDefinition {
   id: GLMModelId;
@@ -12,7 +12,7 @@ export const GLM_MODEL_DEFINITIONS: GLMModelDefinition[] = [
   {
     id: 'glm-5',
     name: 'GLM 5',
-    description: 'Zhipu GLM 4.7 with Claude Code compatible agent runtime',
+    description: 'Zhipu GLM 5 with Claude Code compatible agent runtime',
     supportsImages: true,
     aliases: [
       'glm5',
