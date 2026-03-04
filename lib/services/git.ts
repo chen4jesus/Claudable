@@ -160,12 +160,18 @@ export function commitAll(repoPath: string, message: string) {
   }
 }
 
-export function pushToRemote(repoPath: string, remoteName = 'origin', branch = 'main') {
+export function pushToRemote(
+  repoPath: string,
+  remoteName = 'origin',
+  branch = 'main',
+  remoteUrl?: string,
+) {
+  const remote = remoteUrl || remoteName;
   try {
-    runGit(['push', '-u', remoteName, branch], repoPath);
+    runGit(['push', '-u', remote, branch], repoPath);
   } catch (error) {
     if (error instanceof GitError) {
-      runGit(['push', '-u', '--force', remoteName, branch], repoPath);
+      runGit(['push', '-u', '--force', remote, branch], repoPath);
     } else {
       throw error;
     }

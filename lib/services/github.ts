@@ -197,8 +197,7 @@ export async function connectProjectToGitHub(projectId: string, options: CreateR
   ensureGitConfig(repoPath, userName, userEmail);
   initializeMainBranch(repoPath);
 
-  const authenticatedUrl = cloneUrl.replace('https://', `https://${user.login}:${token}@`);
-  addOrUpdateRemote(repoPath, 'origin', authenticatedUrl);
+  addOrUpdateRemote(repoPath, 'origin', cloneUrl);
   commitAll(repoPath, 'Initial commit - connected to GitHub');
 
   await upsertProjectServiceConnection(projectId, 'github', {
@@ -237,18 +236,19 @@ export async function pushProjectToGitHub(projectId: string) {
 
     const repoPath = await ensureProjectRepository(projectId, project.repoPath);
     ensureGitRepository(repoPath);
-    const authenticatedUrl = String(data.clone_url).replace('https://', `https://${data.owner}:${token}@`);
     const user = await getGithubUser();
     const userName = user.name || user.login;
     const userEmail = user.email || `${user.login}@users.noreply.github.com`;
     ensureGitConfig(repoPath, userName, userEmail);
-    addOrUpdateRemote(repoPath, 'origin', authenticatedUrl);
+
     const committed = commitAll(repoPath, 'Update from Claudable');
     if (!committed) {
       console.log('[GitHubService] No changes to commit before push');
+      return;
     }
 
-    pushToRemote(repoPath, 'origin', data.default_branch || 'main');
+    const authenticatedUrl = String(data.clone_url).replace('https://', `https://${data.owner}:${token}@`);
+    pushToRemote(repoPath, 'origin', data.default_branch || 'main', authenticatedUrl);
 
     await updateProjectServiceData(projectId, 'github', {
       last_pushed_at: new Date().toISOString(),
